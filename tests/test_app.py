@@ -43,6 +43,13 @@ def test_health_api(client):
     assert json_data["max_upload_allowance_mb"] == 1024
 
 
+def test_favicon(client):
+    """Verifies that the favicon endpoint returns 200 OK without 404 error."""
+    response = client.get("/favicon.ico")
+    assert response.status_code == 200
+    assert "image" in response.content_type
+
+
 def test_evaluation_page(client):
     """Verifies that the evaluation and benchmark page loads with metrics."""
     response = client.get("/evaluation")

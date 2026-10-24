@@ -21,6 +21,7 @@ from flask import (
     flash,
     jsonify,
     Response,
+    send_from_directory,
 )
 
 from src.data_loader import (
@@ -59,6 +60,16 @@ def get_model():
     if MODEL_BUNDLE is None:
         MODEL_BUNDLE = load_trained_model("models/model.joblib")
     return MODEL_BUNDLE
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Serves the application favicon to prevent 404 console errors."""
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+    )
 
 
 @app.route("/")
@@ -344,4 +355,4 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=True)
