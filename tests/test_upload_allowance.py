@@ -50,3 +50,27 @@ def test_custom_ecg_upload_allowance():
     )
     assert rec_deci["fs"] == 180  # 360 / 2
     assert rec_deci["total_samples"] > 0
+
+
+def test_heartbeat_matrix_dataset_upload():
+    """Verify smart detection and continuous reconstruction of pre-segmented heartbeat datasets (e.g. mitbih_test.csv)."""
+    with open("data/mitbih_test.csv", "rb") as f:
+        file_bytes = f.read(500 * 1024)  # First ~500 KB slice of mitbih_test.csv
+
+    # 1. Preview
+    prev = get_custom_file_preview(file_bytes)
+    assert prev["success"] is True
+    assert prev["is_heartbeat_matrix"] is True
+    assert "Continuous Rhythm Strip (Reconstructed from Beats)" in prev["numeric_columns"]
+
+    # 2. Load continuous rhythm
+    rec = load_custom_ecg_csv(
+        file_bytes=file_bytes,
+        fs=360,
+        filename="mitbih_test.csv",
+        duration_allowance_sec=30.0,
+    )
+    assert rec["total_samples"] > 1000
+    assert "AAMI Lead" in rec["lead_name"]
+    assert "e+" not in rec["lead_name"]  # No scientific notation in lead name
+    assert len(rec["ann_samples"]) > 0  # True ground truth annotations extracted!

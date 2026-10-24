@@ -389,22 +389,76 @@ def generate_synthetic_ecg(
     }
 
 
+def _read_csv_smart(buf: io.BytesIO, nrows: Optional[int] = None) -> Tuple[pd.DataFrame, bool, bool]:
+    """
+    Intelligently inspects uploaded CSV bytes to detect:
+    1. Whether the first line is numeric (headerless) vs text headers
+    2. Whether the file is an AAMI pre-segmented heartbeat matrix (e.g. mitbih_train/test with 187/188 cols)
+    Returns (dataframe, is_heartbeat_matrix, is_numeric_header).
+    """
+    raw_head = buf.read(64 * 1024)
+    buf.seek(0)
+    first_line = raw_head.split(b"\n")[0].decode("utf-8", errors="ignore").strip()
+
+    delimiter = ","
+    for d in [",", ";", "\t", " "]:
+        if d in first_line:
+            delimiter = d
+            break
+
+    tokens = [t.strip() for t in first_line.split(delimiter) if t.strip()]
+    is_numeric_header = False
+    if len(tokens) > 0:
+        try:
+            [float(t) for t in tokens]
+            is_numeric_header = True
+        except ValueError:
+            is_numeric_header = False
+
+    header_arg = None if is_numeric_header else "infer"
+    try:
+        df = pd.read_csv(buf, sep=delimiter, header=header_arg, nrows=nrows)
+    except Exception:
+        buf.seek(0)
+        df = pd.read_csv(buf, sep=None, header=header_arg, nrows=nrows, engine="python")
+
+    num_cols = df.shape[1]
+    is_heartbeat_matrix = (num_cols in (187, 188)) or (num_cols >= 50 and is_numeric_header)
+
+    if is_numeric_header:
+        if is_heartbeat_matrix:
+            clean_cols = [f"Sample_{i}" for i in range(min(187, num_cols))]
+            if num_cols == 188:
+                clean_cols.append("Class_Label")
+            df.columns = clean_cols
+        else:
+            df.columns = [f"Lead_{i+1}" for i in range(num_cols)]
+
+    return df, is_heartbeat_matrix, is_numeric_header
+
+
 def get_custom_file_preview(file_bytes: bytes) -> Dict[str, Any]:
     """
     Scans uploaded file headers and first rows to return metadata,
     detected delimiter, column names, and preview dataframe.
     """
     try:
-        # Read small sample for speed and low memory
         preview_buf = io.BytesIO(file_bytes[: min(len(file_bytes), 256 * 1024)])
-        df_preview = pd.read_csv(preview_buf, sep=None, engine="python", nrows=20)
-        numeric_cols = list(df_preview.select_dtypes(include=[np.number]).columns)
-        all_cols = list(df_preview.columns)
+        df_preview, is_beat_matrix, is_num_header = _read_csv_smart(preview_buf, nrows=20)
+
+        if is_beat_matrix:
+            numeric_cols = ["Continuous Rhythm Strip (Reconstructed from Beats)", "Sample_0", "Sample_1"]
+            all_cols = numeric_cols
+        else:
+            numeric_cols = list(df_preview.select_dtypes(include=[np.number]).columns)
+            all_cols = list(df_preview.columns)
+
         return {
             "success": True,
             "preview_df": df_preview.head(5),
             "numeric_columns": numeric_cols,
             "all_columns": all_cols,
+            "is_heartbeat_matrix": is_beat_matrix,
             "file_size_bytes": len(file_bytes),
             "file_size_mb": len(file_bytes) / (1024 * 1024),
         }
@@ -428,18 +482,115 @@ def load_custom_ecg_csv(
     downsample_factor: int = 1,
 ) -> Dict[str, Any]:
     """
-    Parses a user-uploaded CSV/TXT ECG signal with configurable Data Allowance controls:
-    - Time-window allowance slicing [start_second, start_second + duration_allowance_sec]
-    - Max samples allowance constraint (protects UI from browser memory lag)
-    - Decimation/Downsampling factor for high-frequency or long Holter monitors
-    - Column lead selection
-
-    Returns structured dictionary with metadata on original vs allowed data slice.
+    Parses a user-uploaded CSV/TXT ECG signal with configurable Data Allowance controls.
+    Handles both:
+    1. Standard continuous multi-lead ECG time-series
+    2. AAMI pre-segmented heartbeat datasets (e.g. mitbih_test.csv/mitbih_train.csv) by reconstructing
+       a natural continuous ECG rhythm strip with ground-truth clinical annotations.
     """
-    # Load data
-    df = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine="python")
+    df, is_beat_matrix, is_num_header = _read_csv_smart(io.BytesIO(file_bytes))
 
-    # Pick or validate column
+    # Detect if we should reconstruct continuous rhythm strip from heartbeat rows
+    is_reconstruct_mode = is_beat_matrix and (
+        selected_column is None
+        or "Continuous" in str(selected_column)
+        or "Rhythm" in str(selected_column)
+        or str(selected_column) in ("Sample_0", "0", "0.0")
+        or "1.0000" in str(selected_column)
+    )
+
+    if is_reconstruct_mode:
+        num_cols = df.shape[1]
+        samples_per_beat = 187
+        spacing = 25  # Physiological resting baseline between beats
+        beat_stride = samples_per_beat + spacing
+
+        target_samples = (
+            int(duration_allowance_sec * fs)
+            if (duration_allowance_sec and duration_allowance_sec > 0)
+            else (len(df) * beat_stride)
+        )
+        beats_needed = min(len(df), max(1, target_samples // beat_stride))
+
+        start_beat = min(len(df) - 1, int(start_second * fs / beat_stride))
+        end_beat = min(len(df), start_beat + beats_needed)
+
+        beats_data = df.iloc[start_beat:end_beat, :187].to_numpy(dtype=np.float64)
+        has_labels = (num_cols == 188)
+        raw_labels = df.iloc[start_beat:end_beat, 187].to_numpy() if has_labels else None
+
+        signal_parts = []
+        ann_samples = []
+        ann_symbols = []
+        ann_labels = []
+        ann_descriptions = []
+
+        symbol_map = {0.0: "N", 1.0: "A", 2.0: "V", 3.0: "F", 4.0: "Q"}
+        desc_map = {
+            0.0: "Normal sinus beat",
+            1.0: "Premature atrial contraction (PAC)",
+            2.0: "Premature ventricular contraction (PVC)",
+            3.0: "Fusion beat",
+            4.0: "Paced / unclassifiable beat",
+        }
+
+        curr_offset = 0
+        for i in range(len(beats_data)):
+            b_wave = beats_data[i]
+            r_peak_rel = int(np.argmax(b_wave))
+            ann_samples.append(curr_offset + r_peak_rel)
+            if has_labels:
+                lbl = float(raw_labels[i])
+                ann_symbols.append(symbol_map.get(lbl, "V" if lbl > 0 else "N"))
+                ann_labels.append(1 if lbl > 0 else 0)
+                ann_descriptions.append(desc_map.get(lbl, "Ectopic beat"))
+
+            signal_parts.append(b_wave)
+            signal_parts.append(np.full(spacing, b_wave[-1]))
+            curr_offset += len(b_wave) + spacing
+
+        signal_slice = np.concatenate(signal_parts).astype(np.float64)
+        effective_fs = fs
+
+        if downsample_factor > 1:
+            signal_slice = signal_slice[::downsample_factor]
+            effective_fs = max(10, fs // downsample_factor)
+            ann_samples = [s // downsample_factor for s in ann_samples]
+
+        final_samples = len(signal_slice)
+        final_duration = final_samples / effective_fs
+        memory_mb = (signal_slice.nbytes) / (1024 * 1024)
+
+        return {
+            "record_name": filename,
+            "signal": signal_slice,
+            "fs": effective_fs,
+            "original_fs": fs,
+            "channel": 0,
+            "lead_name": "AAMI Lead (Continuous Rhythm)",
+            "total_samples": final_samples,
+            "duration_sec": final_duration,
+            "ann_samples": np.array(ann_samples, dtype=int),
+            "ann_symbols": np.array(ann_symbols, dtype=object),
+            "ann_labels": np.array(ann_labels, dtype=int),
+            "ann_descriptions": ann_descriptions,
+            "is_synthetic": False,
+            "is_user_uploaded": True,
+            "allowance_meta": {
+                "raw_file_size_mb": len(file_bytes) / (1024 * 1024),
+                "orig_total_samples": len(df) * beat_stride,
+                "orig_total_duration_sec": (len(df) * beat_stride) / fs,
+                "processed_samples": final_samples,
+                "processed_duration_sec": final_duration,
+                "start_second": start_second,
+                "duration_allowance_sec": duration_allowance_sec,
+                "downsample_factor": downsample_factor,
+                "memory_usage_mb": memory_mb,
+                "available_columns": ["Continuous Rhythm Strip (Reconstructed from Beats)"],
+            },
+        }
+
+    # Standard continuous multi-lead signal processing
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     if len(numeric_cols) == 0:
         raise ValueError("Uploaded file does not contain any numeric ECG voltage columns.")
@@ -449,9 +600,12 @@ def load_custom_ecg_csv(
     else:
         signal_col = numeric_cols[0]
 
-    raw_signal = df[signal_col].to_numpy(dtype=np.float64)
+    # Clean signal col name if numeric/float
+    lead_name = str(signal_col)
+    if "e+" in lead_name or "e-" in lead_name:
+        lead_name = "Lead 1"
 
-    # Drop NaNs or infinities
+    raw_signal = df[signal_col].to_numpy(dtype=np.float64)
     valid_mask = np.isfinite(raw_signal)
     raw_signal = raw_signal[valid_mask]
 
@@ -489,7 +643,7 @@ def load_custom_ecg_csv(
         "fs": effective_fs,
         "original_fs": fs,
         "channel": 0,
-        "lead_name": str(signal_col),
+        "lead_name": lead_name,
         "total_samples": final_samples,
         "duration_sec": final_duration,
         "ann_samples": np.array([], dtype=int),
@@ -498,7 +652,6 @@ def load_custom_ecg_csv(
         "ann_descriptions": [],
         "is_synthetic": False,
         "is_user_uploaded": True,
-        # Data allowance analytics
         "allowance_meta": {
             "raw_file_size_mb": len(file_bytes) / (1024 * 1024),
             "orig_total_samples": orig_total_samples,

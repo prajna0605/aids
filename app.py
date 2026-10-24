@@ -160,15 +160,22 @@ def analyze():
                 flash("The uploaded file is empty.", "error")
                 return redirect(url_for("index"))
 
+            selected_col = request.form.get("selected_column")
             record_data = load_custom_ecg_csv(
                 file_bytes=file_bytes,
                 fs=user_fs,
                 filename=file.filename,
+                selected_column=selected_col,
                 start_second=start_offset,
                 duration_allowance_sec=duration_allowance,
                 max_samples_allowance=1_000_000,
             )
             lead_name = record_data.get("lead_name", "Uploaded Lead")
+
+            # Clean lead name if it contains scientific notation or raw floats
+            lead_name_str = str(lead_name)
+            if "e+" in lead_name_str or "e-" in lead_name_str or lead_name_str.replace(".", "", 1).isdigit():
+                lead_name = "Uploaded ECG Lead"
 
         else:
             flash("Invalid dataset mode requested.", "error")
