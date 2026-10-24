@@ -17,18 +17,18 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-# Theme Palette (Clinical Modern Telemetry Dark Theme)
+# Theme Palette (Clean Minimalist White Theme)
 PALETTE = {
-    "bg": "#0c1017",
-    "card_bg": "#141c28",
-    "grid": "#1d293d",
-    "ecg_trace": "#00f0ff",      # Cyan neon
-    "ecg_raw": "#8899a6",        # Muted gray
-    "normal_beat": "#00e676",    # Medical Green
-    "anomaly_beat": "#ff1744",   # Alert Crimson
-    "warning": "#ffd600",        # Amber Warning
-    "text": "#e2e8f0",
-    "text_muted": "#94a3b8",
+    "bg": "#ffffff",
+    "card_bg": "#ffffff",
+    "grid": "#f1f5f9",
+    "ecg_trace": "#0284c7",      # Clean medical ocean blue
+    "ecg_raw": "#94a3b8",        # Slate gray
+    "normal_beat": "#10b981",    # Emerald green
+    "anomaly_beat": "#ef4444",   # Alert crimson red
+    "warning": "#f59e0b",        # Amber
+    "text": "#0f172a",          # Deep slate charcoal
+    "text_muted": "#64748b",     # Muted slate
 }
 
 
@@ -144,7 +144,7 @@ def plot_ecg_interactive(
             title="Time (seconds)",
             gridcolor=PALETTE["grid"],
             zerolinecolor=PALETTE["grid"],
-            rangeslider=dict(visible=True, thickness=0.08, bgcolor="#111827"),
+            rangeslider=dict(visible=True, thickness=0.08, bgcolor="#f8fafc"),
         ),
         yaxis=dict(
             title="Amplitude (mV / Normalized)",
@@ -157,7 +157,7 @@ def plot_ecg_interactive(
             y=1.02,
             xanchor="right",
             x=1,
-            bgcolor="rgba(20,28,40,0.8)",
+            bgcolor="rgba(255, 255, 255, 0.95)",
             bordercolor=PALETTE["grid"],
             borderwidth=1,
         ),

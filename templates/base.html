@@ -3,57 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="ECG Insight AI — Automated Electrocardiogram Anomaly Detection and Telemetry System powered by Machine Learning.">
-  <title>{% block title %}ECG Insight AI — Anomaly Detection System{% endblock %}</title>
+  <meta name="description" content="ECG Insight AI — Clean & Minimal Electrocardiogram Arrhythmia Detection System.">
+  <title>{% block title %}ECG Insight AI — Arrhythmia Detection{% endblock %}</title>
   
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/ecg_logo.svg') }}">
 
   <!-- Google Fonts & Font Awesome Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
   <!-- Plotly.js for interactive biomedical charts -->
   <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
 
-  <!-- Core Vanilla CSS Design System -->
+  <!-- Core Minimalist CSS Design System -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
 
-  <!-- Top Sticky Navigation -->
+  <!-- Top Navigation Bar -->
   <header>
     <nav class="navbar" id="top_navbar">
       <a href="{{ url_for('index') }}" class="nav-brand" id="nav_brand">
         <div class="brand-icon">
-          <i class="fa-solid fa-heart-pulse" style="color: var(--accent-cyan);"></i>
+          <i class="fa-solid fa-heart-pulse"></i>
         </div>
-        <div>
-          <span class="brand-title">ECG Insight AI</span>
-          <span class="brand-badge">ML v1.0</span>
-        </div>
+        <span class="brand-title">ECG Insight</span>
       </a>
 
       <ul class="nav-links">
         <li>
-          <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" id="nav_home">
-            <i class="fa-solid fa-chart-line"></i> Live Telemetry
+          <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' or request.endpoint == 'analyze' %}active{% endif %}" id="nav_home">
+            <i class="fa-solid fa-chart-line"></i> Analysis
           </a>
         </li>
         <li>
           <a href="{{ url_for('evaluation') }}" class="nav-link {% if request.endpoint == 'evaluation' %}active{% endif %}" id="nav_eval">
-            <i class="fa-solid fa-square-poll-vertical"></i> Benchmark & Metrics
+            <i class="fa-solid fa-square-poll-vertical"></i> Benchmarks
           </a>
-        </li>
-        <li>
-          <div class="pulse-status" title="Biomedical ML Engine Active">
-            <span class="pulse-dot"></span>
-            <span>DSP & ML ONLINE</span>
-          </div>
         </li>
       </ul>
     </nav>
@@ -64,11 +54,9 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
-          <div class="glass-panel" style="border-left: 4px solid var(--accent-crimson); padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <i class="fa-solid fa-circle-exclamation" style="color: var(--accent-crimson);"></i>
-              <span style="color: #fca5a5; font-size: 0.95rem;">{{ message }}</span>
-            </div>
+          <div style="background: #ffffff; border: 1px solid #fecaca; border-left: 4px solid #ef4444; border-radius: 8px; padding: 0.85rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;">
+            <i class="fa-solid fa-circle-exclamation" style="color: #ef4444;"></i>
+            <span style="color: #991b1b; font-size: 0.9rem; font-weight: 500;">{{ message }}</span>
           </div>
         {% endfor %}
       {% endif %}
@@ -78,23 +66,22 @@
 
     <!-- Clinical Disclaimer -->
     <aside class="disclaimer-card" id="disclaimer_banner">
-      <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.25rem; margin-top: 2px;"></i>
+      <i class="fa-solid fa-circle-info" style="font-size: 1.1rem; color: #64748b; margin-top: 1px;"></i>
       <div>
-        <strong>⚠️ Clinical & Educational Research Disclaimer:</strong>
-        ECG Insight AI is an educational research and engineering demonstration prototype.
-        Its automated predictions and anomaly flags are not clinically validated and must NEVER be used for medical diagnosis, prognosis, or clinical treatment decisions.
+        <strong>Educational Research Prototype:</strong>
+        ECG Insight is developed for academic engineering demonstration. Automated predictions must not be used as clinical medical advice or diagnosis.
       </div>
     </aside>
   </main>
 
-  <!-- Global Footer -->
+  <!-- Global Minimal Footer -->
   <footer class="footer">
     <div class="container" style="padding-top: 0; padding-bottom: 0;">
-      <p style="margin-bottom: 6px;">
-        <strong>ECG Insight AI</strong> — Biomedical Signal Processing & Machine Learning Anomaly Detection System
+      <p style="margin-bottom: 4px; font-weight: 500;">
+        ECG Insight • Biomedical Signal Processing & Machine Learning
       </p>
-      <p style="font-size: 0.8rem; color: var(--text-dim);">
-        Dataset: PhysioNet MIT-BIH Arrhythmia Database • Powered by Flask, SciPy, Scikit-learn & Plotly.js
+      <p style="font-size: 0.78rem; color: #94a3b8;">
+        PhysioNet MIT-BIH Database • Scipy, Scikit-learn & Plotly.js
       </p>
     </div>
   </footer>
@@ -102,11 +89,11 @@
   <!-- Loading Spinner Overlay -->
   <div class="loading-overlay" id="loading_overlay">
     <div class="spinner"></div>
-    <div style="font-family: var(--font-heading); font-size: 1.2rem; font-weight: 600; color: var(--accent-cyan);">
-      Processing ECG Signal...
+    <div style="font-family: var(--font-heading); font-size: 1.1rem; font-weight: 600; color: var(--text-main);">
+      Analyzing ECG Signal...
     </div>
-    <div style="font-size: 0.88rem; color: var(--text-muted);">
-      Applying zero-phase Butterworth filter, Pan-Tompkins QRS detection, and ML inference.
+    <div style="font-size: 0.85rem; color: var(--text-muted);">
+      Filtering signal, detecting R-peaks, and running ML inference.
     </div>
   </div>
 
