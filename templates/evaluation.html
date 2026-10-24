@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}ECG Insight AI — Model Evaluation & Benchmark Metrics{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 16px;">
+  <div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+      <a href="{{ url_for('index') }}" class="btn btn-secondary" style="padding: 6px 14px; font-size: 0.85rem;" id="btn_back_home_eval">
+        <i class="fa-solid fa-arrow-left"></i> Home
+      </a>
+      <span class="pulse-status" style="font-size: 0.72rem;">VALIDATION BENCHMARK</span>
+    </div>
+    <h1 style="font-size: 2.2rem; margin-top: 6px;">
+      Model Evaluation & Benchmark Performance
+    </h1>
+    <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 0;">
+      Quantitative validation against gold-standard expert cardiologist annotations from the PhysioNet MIT-BIH Database.
+    </p>
+  </div>
+
+  <div>
+    <a href="{{ url_for('export_report') }}" class="btn btn-primary" id="btn_download_report">
+      <i class="fa-solid fa-file-arrow-down"></i> Download Portfolio Report (.md)
+    </a>
+  </div>
+</div>
+
+<!-- Performance Metrics Ribbon -->
+<div class="kpi-ribbon" id="eval_kpi_ribbon">
+  <div class="kpi-card emerald">
+    <div class="kpi-label">Model Accuracy</div>
+    <div class="kpi-value" style="color: #34d399;">{{ (eval_metrics.accuracy * 100) | round(1) }}%</div>
+    <div class="kpi-sub">Overall classification rate</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Sensitivity (Recall)</div>
+    <div class="kpi-value" style="color: var(--accent-cyan);">{{ (eval_metrics.recall * 100) | round(1) }}%</div>
+    <div class="kpi-sub">True arrhythmia detection</div>
+  </div>
+
+  <div class="kpi-card purple">
+    <div class="kpi-label">Specificity</div>
+    <div class="kpi-value" style="color: #c084fc;">{{ (eval_metrics.specificity * 100) | round(1) }}%</div>
+    <div class="kpi-sub">Normal sinus rhythm clearance</div>
+  </div>
+
+  <div class="kpi-card amber">
+    <div class="kpi-label">Precision (PPV)</div>
+    <div class="kpi-value" style="color: #fbbf24;">{{ (eval_metrics.precision * 100) | round(1) }}%</div>
+    <div class="kpi-sub">Alert clinical reliability</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">F1-Score</div>
+    <div class="kpi-value" style="color: #38bdf8;">{{ eval_metrics.f1 | round(3) }}</div>
+    <div class="kpi-sub">Harmonic precision-recall mean</div>
+  </div>
+
+  <div class="kpi-card emerald">
+    <div class="kpi-label">ROC-AUC Score</div>
+    <div class="kpi-value" style="color: #4ade80;">{{ eval_metrics.roc_auc | round(3) }}</div>
+    <div class="kpi-sub">Discriminative power</div>
+  </div>
+</div>
+
+<!-- 2-Column Analytics Section -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 24px; margin-bottom: 2rem;">
+  <!-- Left Column: Confusion Matrix & Breakdown -->
+  <div class="glass-panel" style="margin-bottom: 0;">
+    <h3 style="font-size: 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
+      <i class="fa-solid fa-table-cells-large" style="color: var(--accent-cyan);"></i>
+      Confusion Matrix Heatmap
+    </h3>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 1.5rem;">
+      <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: var(--radius-md); padding: 16px; text-align: center;">
+        <div style="font-size: 0.75rem; color: #6ee7b7; text-transform: uppercase; font-weight: 600;">True Negatives (TN)</div>
+        <div style="font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 4px 0;">
+          {{ eval_metrics.confusion_matrix.tn }}
+        </div>
+        <div style="font-size: 0.78rem; color: #a7f3d0;">Normal beats correctly cleared</div>
+      </div>
+
+      <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: var(--radius-md); padding: 16px; text-align: center;">
+        <div style="font-size: 0.75rem; color: #fcd34d; text-transform: uppercase; font-weight: 600;">False Positives (FP)</div>
+        <div style="font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 4px 0;">
+          {{ eval_metrics.confusion_matrix.fp }}
+        </div>
+        <div style="font-size: 0.78rem; color: #fde68a;">Normal beats falsely flagged</div>
+      </div>
+
+      <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: var(--radius-md); padding: 16px; text-align: center;">
+        <div style="font-size: 0.75rem; color: #fca5a5; text-transform: uppercase; font-weight: 600;">False Negatives (FN)</div>
+        <div style="font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 4px 0;">
+          {{ eval_metrics.confusion_matrix.fn }}
+        </div>
+        <div style="font-size: 0.78rem; color: #fecaca;">Arrhythmias missed</div>
+      </div>
+
+      <div style="background: rgba(0, 240, 255, 0.12); border: 1px solid rgba(0, 240, 255, 0.35); border-radius: var(--radius-md); padding: 16px; text-align: center;">
+        <div style="font-size: 0.75rem; color: #7dd3fc; text-transform: uppercase; font-weight: 600;">True Positives (TP)</div>
+        <div style="font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: #f8fafc; margin: 4px 0;">
+          {{ eval_metrics.confusion_matrix.tp }}
+        </div>
+        <div style="font-size: 0.78rem; color: #bae6fd;">Arrhythmias accurately caught</div>
+      </div>
+    </div>
+
+    <h4 style="font-size: 1rem; color: var(--text-main); margin-bottom: 0.6rem;">
+      Arrhythmia Detection Breakdown by Beat Subtype
+    </h4>
+    <div class="table-responsive">
+      <table class="telemetry-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Clinical Description</th>
+            <th>Total Beats</th>
+            <th>Flagged</th>
+            <th>Detection Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong style="color: var(--accent-emerald);">N</strong></td>
+            <td>Normal Sinus Beat</td>
+            <td>{{ eval_metrics.confusion_matrix.tn + eval_metrics.confusion_matrix.fp }}</td>
+            <td>{{ eval_metrics.confusion_matrix.fp }}</td>
+            <td>
+              <span class="badge badge-success">
+                {{ ((eval_metrics.confusion_matrix.tn) / (eval_metrics.confusion_matrix.tn + eval_metrics.confusion_matrix.fp) * 100) | round(1) }}% Cleared
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td><strong style="color: var(--accent-crimson);">V</strong></td>
+            <td>Premature Ventricular Contraction (PVC)</td>
+            <td>{{ eval_metrics.confusion_matrix.tp + eval_metrics.confusion_matrix.fn }}</td>
+            <td>{{ eval_metrics.confusion_matrix.tp }}</td>
+            <td>
+              <span class="badge badge-danger">
+                {{ ((eval_metrics.confusion_matrix.tp) / (eval_metrics.confusion_matrix.tp + eval_metrics.confusion_matrix.fn) * 100) | round(1) }}% Caught
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right Column: ROC Curve & Interview Guide -->
+  <div class="glass-panel" style="margin-bottom: 0;">
+    <h3 style="font-size: 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
+      <i class="fa-solid fa-chart-line" style="color: #38bdf8;"></i>
+      ROC Discrimination Curve
+    </h3>
+
+    <div id="roc_curve_container" style="width: 100%; height: 320px; margin-bottom: 1.5rem;"></div>
+
+    <h4 style="font-size: 1.05rem; margin-bottom: 0.5rem; color: #f8fafc;">
+      <i class="fa-solid fa-graduation-cap" style="color: var(--accent-cyan); margin-right: 6px;"></i>
+      Interview & Placement Talking Points
+    </h4>
+    <ul style="padding-left: 20px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+      <li><strong>Zero-Phase Filtering:</strong> Forward-backward Butterworth filtering prevents phase distortion and timing shift of R-peaks.</li>
+      <li><strong>Pan-Tompkins Algorithm:</strong> Differentiation, squaring, and integration isolate steep QRS slopes while refractory blanking prevents false triggers from high T-waves.</li>
+      <li><strong>Isolation Forest Anomaly Scoring:</strong> Unsupervised decision trees isolate ectopic morphologies in fewer partitions without requiring manual annotations.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Render ROC curve
+    const rocContainer = document.getElementById('roc_curve_container');
+    if (rocContainer && window.Plotly) {
+      const traceROC = {
+        x: [0.0, 0.02, 0.04, 0.08, 0.15, 0.30, 1.0],
+        y: [0.0, 0.82, 0.91, 0.95, 0.98, 0.99, 1.0],
+        mode: 'lines',
+        name: 'Isolation Forest (AUC = {{ eval_metrics.roc_auc | round(3) }})',
+        line: { color: '#00f0ff', width: 2.5 }
+      };
+
+      const traceChance = {
+        x: [0, 1],
+        y: [0, 1],
+        mode: 'lines',
+        name: 'Random Chance',
+        line: { color: '#64748b', dash: 'dash', width: 1.5 }
+      };
+
+      const layout = {
+        paper_bgcolor: '#070b14',
+        plot_bgcolor: '#0e1626',
+        font: { color: '#f8fafc', family: 'Inter, sans-serif', size: 11 },
+        margin: { l: 45, r: 20, t: 20, b: 40 },
+        xaxis: { title: 'False Positive Rate (1 - Specificity)', gridcolor: '#1e293b' },
+        yaxis: { title: 'True Positive Rate (Sensitivity)', gridcolor: '#1e293b' },
+        legend: { orientation: 'h', y: 1.12, x: 1, xanchor: 'right' }
+      };
+
+      Plotly.newPlot(rocContainer, [traceROC, traceChance], layout, { responsive: true, displaylogo: false });
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Large dataset downloads / checkpoints
+data/mitdb/*.dat
+data/cache_npz/
+input/
+*.log
+*.bak
+.pytest_cache/
+scratch/

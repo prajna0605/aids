@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}ECG Insight AI — Telemetry Results ({{ record_name }}){% endblock %}
+
+{% block content %}
+<!-- Top Results Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 16px;">
+  <div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+      <a href="{{ url_for('index') }}" class="btn btn-secondary" style="padding: 6px 14px; font-size: 0.85rem;" id="btn_back_home">
+        <i class="fa-solid fa-arrow-left"></i> Back to Inputs
+      </a>
+      <span class="pulse-status" style="font-size: 0.72rem;">INFERENCE COMPLETE</span>
+    </div>
+    <h1 style="font-size: 2.2rem; margin-top: 6px;">
+      Telemetry Analysis: <span style="color: var(--accent-cyan);">{{ record_name }}</span>
+    </h1>
+    <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 0;">
+      Lead: <strong style="color: #f8fafc;">{{ lead_name }}</strong> &nbsp;•&nbsp; 
+      Duration: <strong style="color: #f8fafc;">{{ duration_sec }}s</strong> &nbsp;•&nbsp; 
+      Sampling Rate: <strong style="color: #f8fafc;">{{ fs }} Hz</strong>
+    </p>
+  </div>
+
+  <div style="display: flex; gap: 10px;">
+    <a href="{{ url_for('evaluation') }}" class="btn btn-secondary" id="btn_view_eval">
+      <i class="fa-solid fa-square-poll-vertical"></i> Benchmark Metrics
+    </a>
+    <a href="{{ url_for('index') }}" class="btn btn-primary" id="btn_new_analysis">
+      <i class="fa-solid fa-rotate-right"></i> Analyze Another Record
+    </a>
+  </div>
+</div>
+
+<!-- KPI Metrics Ribbon -->
+<div class="kpi-ribbon" id="results_kpi_ribbon">
+  <div class="kpi-card">
+    <div class="kpi-label">Analyzed Heartbeats</div>
+    <div class="kpi-value">{{ total_beats }}</div>
+    <div class="kpi-sub">Segmented P-QRS-T complexes</div>
+  </div>
+
+  <div class="kpi-card emerald">
+    <div class="kpi-label">Average Heart Rate</div>
+    <div class="kpi-value" style="color: #38bdf8;">{{ mean_hr }} <span style="font-size: 1rem; color: var(--text-dim);">BPM</span></div>
+    <div class="kpi-sub">Mean ventricular frequency</div>
+  </div>
+
+  <div class="kpi-card {% if anomalies_count > 0 %}crimson{% else %}emerald{% endif %}">
+    <div class="kpi-label">Flagged Anomalies</div>
+    <div class="kpi-value" style="color: {% if anomalies_count > 0 %}var(--accent-crimson){% else %}var(--accent-emerald){% endif %};">
+      {{ anomalies_count }}
+    </div>
+    <div class="kpi-sub">Score ≥ {{ threshold }} threshold</div>
+  </div>
+
+  <div class="kpi-card amber">
+    <div class="kpi-label">Arrhythmia Burden</div>
+    <div class="kpi-value" style="color: #fbbf24;">{{ burden_pct }}%</div>
+    <div class="kpi-sub">Fraction of atypical beats</div>
+  </div>
+</div>
+
+<!-- Interactive ECG Telemetry Waveform Card -->
+<div class="telemetry-chart-card" id="telemetry_chart_card">
+  <div class="chart-header">
+    <div>
+      <h3 style="font-size: 1.25rem; font-weight: 700; color: #f8fafc;">
+        <i class="fa-solid fa-heart-pulse" style="color: var(--accent-cyan); margin-right: 6px;"></i>
+        ECG Waveform Telemetry Strip
+      </h3>
+      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0;">
+        Interactive trace: Drag or zoom with rangeslider below. Red diamonds and shaded alert zones indicate flagged anomalous beats.
+      </p>
+    </div>
+
+    <div class="chart-legend-strip">
+      <div class="legend-item"><span class="legend-dot cyan"></span> ECG Voltage</div>
+      <div class="legend-item"><span class="legend-dot green"></span> Normal Beat</div>
+      <div class="legend-item"><span class="legend-dot red"></span> Flagged Anomaly</div>
+    </div>
+  </div>
+
+  <div id="ecg_plot_container" style="width: 100%; min-height: 440px;"></div>
+</div>
+
+<!-- RR Tachogram & Anomaly Score Trajectory -->
+<div class="telemetry-chart-card" id="tachogram_card">
+  <div class="chart-header">
+    <div>
+      <h3 style="font-size: 1.25rem; font-weight: 700; color: #f8fafc;">
+        <i class="fa-solid fa-stopwatch" style="color: #38bdf8; margin-right: 6px;"></i>
+        RR Tachogram & Model Anomaly Score Stream
+      </h3>
+      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0;">
+        Synchronized beat-to-beat intervals (ms) highlighting premature contractions followed by continuous anomaly score [0, 1].
+      </p>
+    </div>
+  </div>
+
+  <div id="tachogram_plot_container" style="width: 100%; min-height: 400px;"></div>
+</div>
+
+<!-- Detailed Beat Inspection Table -->
+<div class="glass-panel" id="beat_table_panel">
+  <div class="panel-header">
+    <div>
+      <h3 class="panel-title">
+        <i class="fa-solid fa-list-check" style="color: var(--accent-cyan);"></i>
+        Beat-by-Beat Clinical Inspection Table
+      </h3>
+      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0;">
+        Detailed biometric features and model confidence extracted for each individual heartbeat.
+      </p>
+    </div>
+
+    <!-- Filter Buttons -->
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="btn btn-secondary table-filter-btn active" data-filter="all" style="padding: 5px 12px; font-size: 0.8rem;">
+        All Beats ({{ total_beats }})
+      </button>
+      <button type="button" class="btn btn-secondary table-filter-btn" data-filter="anomaly" style="padding: 5px 12px; font-size: 0.8rem; color: #f87171;">
+        🚨 Anomalies Only ({{ anomalies_count }})
+      </button>
+      <button type="button" class="btn btn-secondary table-filter-btn" data-filter="normal" style="padding: 5px 12px; font-size: 0.8rem; color: #34d399;">
+        ✅ Normal Beats ({{ total_beats - anomalies_count }})
+      </button>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="telemetry-table" id="beats_table">
+      <thead>
+        <tr>
+          <th>Beat #</th>
+          <th>Time (s)</th>
+          <th>AI Classification</th>
+          <th>Anomaly Score</th>
+          <th>Pre-RR (ms)</th>
+          <th>R-Peak Amp (mV)</th>
+          <th>QRS Energy</th>
+          <th>Reference Symbol</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in beats %}
+        <tr data-anomaly="{{ 'true' if b.is_anomaly else 'false' }}">
+          <td>#{{ b.beat_num }}</td>
+          <td>{{ b.time_s }}s</td>
+          <td>
+            {% if b.is_anomaly %}
+              <span class="badge badge-danger"><i class="fa-solid fa-triangle-exclamation"></i> Flagged Anomaly</span>
+            {% else %}
+              <span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> Normal Beat</span>
+            {% endif %}
+          </td>
+          <td style="color: {% if b.is_anomaly %}var(--accent-crimson){% else %}var(--accent-emerald){% endif %}; font-weight: 700;">
+            {{ b.score }}
+          </td>
+          <td>{{ b.pre_rr }} ms</td>
+          <td>{{ b.r_amp }}</td>
+          <td>{{ b.qrs_energy }}</td>
+          <td>
+            <span style="font-family: var(--font-mono); font-weight: 600; color: #94a3b8;">
+              {{ b.symbol if b.symbol else 'N/A' }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Telemetry Data Injected from Flask
+  const telemetryData = {{ telemetry_json | safe }};
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (telemetryData) {
+      renderECGPlot('ecg_plot_container', telemetryData);
+      renderTachogramPlot('tachogram_plot_container', telemetryData);
+    }
+  });
+</script>
+{% endblock %}

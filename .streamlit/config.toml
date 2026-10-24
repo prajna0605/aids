@@ -1,0 +1,14 @@
+[server]
+# Increase file upload allowance from default 200MB to 1024MB (1 GB)
+maxUploadSize = 1024
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+
+[theme]
+base = "dark"
+primaryColor = "#00e5ff"
+backgroundColor = "#080c14"
+secondaryBackgroundColor = "#111827"
+textColor = "#f1f5f9"
+font = "sans serif"

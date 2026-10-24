@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}ECG Insight AI — Home & Telemetry Analysis{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero" id="hero_section">
+  <div class="hero-pill">
+    <i class="fa-solid fa-microchip"></i> Machine Learning Biomedical Telemetry System
+  </div>
+  <h1 class="hero-title">Automated ECG Anomaly Detection</h1>
+  <p class="hero-subtitle">
+    Advanced biomedical time-series signal processing, zero-phase digital filtering, Pan-Tompkins QRS detection, and machine learning pattern recognition on PhysioNet MIT-BIH recordings.
+  </p>
+
+  <!-- Key Capabilities Ribbon -->
+  <div class="kpi-ribbon" id="capabilities_ribbon">
+    <div class="kpi-card emerald">
+      <div class="kpi-label">Target Dataset</div>
+      <div class="kpi-value" style="font-size: 1.5rem; color: #34d399;">MIT-BIH</div>
+      <div class="kpi-sub">PhysioNet Arrhythmia Database</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Signal Conditioning</div>
+      <div class="kpi-value" style="font-size: 1.5rem; color: var(--accent-cyan);">0.5 – 40 Hz</div>
+      <div class="kpi-sub">Zero-Phase Butterworth & Notch</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">ML Detection Core</div>
+      <div class="kpi-value" style="font-size: 1.5rem; color: #c084fc;">Isolation Forest</div>
+      <div class="kpi-sub">Continuous Anomaly Scoring</div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="kpi-label">Upload Allowance</div>
+      <div class="kpi-value" style="font-size: 1.5rem; color: #fbbf24;">1,024 MB</div>
+      <div class="kpi-sub">Multi-lead CSV/TXT Allowance</div>
+    </div>
+  </div>
+</section>
+
+<!-- Analysis Control Panel -->
+<section class="glass-panel" id="analysis_panel">
+  <div class="panel-header">
+    <h2 class="panel-title">
+      <i class="fa-solid fa-sliders" style="color: var(--accent-cyan);"></i>
+      Select ECG Source & Configure Analysis
+    </h2>
+    <span style="font-size: 0.85rem; color: var(--text-dim);">Step 1: Choose Dataset &nbsp;•&nbsp; Step 2: Run AI Pipeline</span>
+  </div>
+
+  <form id="analysis_form" action="{{ url_for('analyze') }}" method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="dataset_mode" id="dataset_mode" value="preset">
+    <input type="hidden" name="preset_record" id="selected_preset_record" value="106">
+
+    <!-- Source Selection Tabs -->
+    <div class="tab-nav" role="tablist">
+      <button type="button" class="tab-btn active" data-target="tab_preset" data-mode="preset" id="tab_btn_preset">
+        <i class="fa-solid fa-database"></i> PhysioNet MIT-BIH Database
+      </button>
+      <button type="button" class="tab-btn" data-target="tab_synthetic" data-mode="synthetic" id="tab_btn_synthetic">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> Synthetic Simulation (Offline)
+      </button>
+      <button type="button" class="tab-btn" data-target="tab_upload" data-mode="upload" id="tab_btn_upload">
+        <i class="fa-solid fa-cloud-arrow-up"></i> Custom Upload (1,024 MB Allowance)
+      </button>
+    </div>
+
+    <!-- TAB 1: MIT-BIH Presets -->
+    <div class="tab-pane active" id="tab_preset">
+      <div class="records-grid" id="records_grid">
+        <!-- Record 100 -->
+        <div class="record-card" data-record="100" id="card_rec_100">
+          <div class="record-header">
+            <span class="record-badge normal"><i class="fa-solid fa-check"></i> Clean Baseline</span>
+            <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim);">Lead MLII</span>
+          </div>
+          <div class="record-name">Record 100</div>
+          <div class="record-desc">Normal sinus rhythm baseline with rare ectopic beats. Useful as negative reference control.</div>
+        </div>
+
+        <!-- Record 106 -->
+        <div class="record-card selected" data-record="106" id="card_rec_106">
+          <div class="record-header">
+            <span class="record-badge arrhythmia"><i class="fa-solid fa-triangle-exclamation"></i> Frequent PVCs</span>
+            <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim);">Lead MLII</span>
+          </div>
+          <div class="record-name">Record 106</div>
+          <div class="record-desc">Frequent Premature Ventricular Contractions (PVCs) occurring as isolated beats and couplets.</div>
+        </div>
+
+        <!-- Record 119 -->
+        <div class="record-card" data-record="119" id="card_rec_119">
+          <div class="record-header">
+            <span class="record-badge arrhythmia"><i class="fa-solid fa-triangle-exclamation"></i> Ventricular Bigeminy</span>
+            <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim);">Lead MLII</span>
+          </div>
+          <div class="record-name">Record 119</div>
+          <div class="record-desc">Classic bigeminal rhythm (alternating normal sinus beat and premature ventricular ectopic).</div>
+        </div>
+
+        <!-- Record 200 -->
+        <div class="record-card" data-record="200" id="card_rec_200">
+          <div class="record-header">
+            <span class="record-badge arrhythmia"><i class="fa-solid fa-triangle-exclamation"></i> Complex Arrhythmia</span>
+            <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim);">Lead MLII</span>
+          </div>
+          <div class="record-name">Record 200</div>
+          <div class="record-desc">Polymorphic ventricular ectopy, paired couplets, and short runs of ventricular tachycardia.</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="preset_duration">Signal Duration:</label>
+          <div class="slider-container">
+            <input type="range" class="slider" id="preset_duration" name="preset_duration" min="10" max="180" value="60" step="10" data-unit="s">
+            <span class="slider-value" id="preset_duration_val">60s</span>
+          </div>
+          <div class="form-caption">Duration of recording slice to analyze from start.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="preset_lead">Channel / Lead:</label>
+          <select class="form-select" id="preset_lead" name="preset_lead">
+            <option value="0" selected>Channel 0 (Lead MLII / Modified Limb Lead II)</option>
+            <option value="1">Channel 1 (Lead V1 / V5)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Synthetic Generator -->
+    <div class="tab-pane" id="tab_synthetic">
+      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0;">
+          <strong style="color: var(--accent-cyan);"><i class="fa-solid fa-circle-info"></i> Offline Simulation:</strong>
+          Synthesizes realistic P-QRS-T complexes with customizable premature ventricular beats (PVCs), compensatory pauses, respiration baseline wander, and 50 Hz powerline hum.
+        </p>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="synth_hr">Heart Rate (BPM):</label>
+          <div class="slider-container">
+            <input type="range" class="slider" id="synth_hr" name="synth_hr" min="50" max="130" value="75" step="1" data-unit=" BPM">
+            <span class="slider-value" id="synth_hr_val">75 BPM</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="synth_duration">Duration:</label>
+          <div class="slider-container">
+            <input type="range" class="slider" id="synth_duration" name="synth_duration" min="15" max="120" value="45" step="5" data-unit="s">
+            <span class="slider-value" id="synth_duration_val">45s</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="synth_ano_prob">Arrhythmia (PVC) Probability:</label>
+          <div class="slider-container">
+            <input type="range" class="slider" id="synth_ano_prob" name="synth_ano_prob" min="0" max="40" value="18" step="2" data-unit="%">
+            <span class="slider-value" id="synth_ano_prob_val">18%</span>
+          </div>
+          <div class="form-caption">Frequency of injected premature ectopic beats with widened QRS.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="synth_noise">Noise Level:</label>
+          <div class="slider-container">
+            <input type="range" class="slider" id="synth_noise" name="synth_noise" min="0" max="15" value="4" step="1" data-unit="%">
+            <span class="slider-value" id="synth_noise_val">4%</span>
+          </div>
+          <div class="form-caption">Superimposed electromyographic (EMG) noise and baseline drift.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Custom File Upload -->
+    <div class="tab-pane" id="tab_upload">
+      <div class="allowance-badge" style="margin-bottom: 1.25rem;">
+        <i class="fa-solid fa-shield-halved" style="color: var(--accent-cyan);"></i>
+        <span style="font-size: 0.85rem; font-weight: 600; color: #e2e8f0;">
+          Data Upload Allowance: <strong style="color: var(--accent-cyan);">Up to 1,024 MB (1.0 GB)</strong> per file
+        </span>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="custom_file_input" name="custom_file" accept=".csv,.txt,.tsv,.dat" style="display: none;">
+        <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
+        <h4 style="font-size: 1.15rem; margin-bottom: 6px;">Drag & Drop your ECG file here or Browse</h4>
+        <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 10px;">
+          Accepts single-column or multi-column voltage recordings (.csv, .txt, .tsv, .dat)
+        </p>
+        <span class="btn btn-secondary" style="font-size: 0.85rem; padding: 6px 16px;">Select File</span>
+      </div>
+
+      <!-- Selected File Badge -->
+      <div id="file_info_badge" style="display: none; background: rgba(0, 240, 255, 0.08); border: 1px solid var(--border-glow); border-radius: var(--radius-sm); padding: 10px 14px; margin-top: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <i class="fa-solid fa-file-waveform" style="color: var(--accent-cyan); margin-right: 6px;"></i>
+            <strong id="selected_file_name" style="color: #f8fafc;">filename.csv</strong>
+            <span id="selected_file_size" style="color: var(--text-dim); font-size: 0.82rem; margin-left: 8px;">0.00 MB</span>
+          </div>
+          <span id="allowance_usage_text" style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent-emerald);">
+            Allowance Verified
+          </span>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top: 1.5rem;">
+        <div class="form-group">
+          <label class="form-label" for="custom_fs">Sampling Frequency (Hz):</label>
+          <input type="number" class="form-control" id="custom_fs" name="custom_fs" value="360" min="50" max="10000" step="10">
+          <div class="form-caption">e.g., 360 Hz (PhysioNet standard), 250 Hz, or 500 Hz.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Allowance Slicing Mode:</label>
+          <div style="display: flex; gap: 20px; margin-top: 10px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+              <input type="radio" name="allowance_mode" value="window" checked> Time-Window Slice (Recommended)
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+              <input type="radio" name="allowance_mode" value="full"> Full Recording
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div id="window_allowance_controls" class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="window_duration">Duration Allowance (seconds):</label>
+          <div class="slider-container">
+            <input type="range" class="slider" id="window_duration" name="window_duration" min="10" max="300" value="60" step="10" data-unit="s">
+            <span class="slider-value" id="window_duration_val">60s</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="window_offset">Start Offset (seconds):</label>
+          <input type="number" class="form-control" id="window_offset" name="window_offset" value="0.0" min="0" step="10">
+          <div class="form-caption">Starting timestamp position into long recordings.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Advanced Signal & Model Tuning Accordion -->
+    <details style="margin: 2rem 0 1.5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem 1.25rem; background: rgba(11, 18, 32, 0.4);">
+      <summary style="font-weight: 600; font-size: 0.95rem; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; gap: 8px;">
+        <i class="fa-solid fa-gears"></i> Advanced Machine Learning & Filter Parameters
+      </summary>
+
+      <div style="margin-top: 1.25rem;">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="decision_threshold">Decision Alert Threshold [0, 1]:</label>
+            <div class="slider-container">
+              <input type="range" class="slider" id="decision_threshold" name="decision_threshold" min="10" max="95" value="50" step="5" data-unit="%">
+              <span class="slider-value" id="decision_threshold_val">50%</span>
+            </div>
+            <div class="form-caption">Beats with normalized anomaly score ≥ threshold trigger alerts.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="filter_bandpass">Butterworth Bandpass Range:</label>
+            <select class="form-select" id="filter_bandpass" name="filter_bandpass">
+              <option value="0.5-40" selected>0.5 Hz – 40 Hz (Standard Clinical Band)</option>
+              <option value="0.1-50">0.1 Hz – 50 Hz (Extended Wideband)</option>
+              <option value="1.0-30">1.0 Hz – 30 Hz (Heavy Artifact Suppression)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top: 0.5rem;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+            <input type="checkbox" name="apply_notch" value="true" checked>
+            Apply 50 Hz IIR Notch Filter (Rejects AC powerline grid interference)
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <!-- Submit CTA Button -->
+    <div style="text-align: center; margin-top: 2rem;">
+      <button type="submit" class="btn btn-primary btn-lg" id="btn_run_analysis">
+        <i class="fa-solid fa-bolt"></i> Run AI Analysis & Generate Telemetry
+      </button>
+    </div>
+  </form>
+</section>
+
+<!-- Pipeline Process Workflow Cards -->
+<section style="margin-top: 3.5rem;">
+  <div style="text-align: center; margin-bottom: 2rem;">
+    <h2 style="font-size: 1.8rem; margin-bottom: 0.4rem;">How ECG Insight AI Works</h2>
+    <p style="font-size: 0.95rem; color: var(--text-dim);">End-to-end biomedical machine learning telemetry pipeline</p>
+  </div>
+
+  <div class="kpi-ribbon" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
+    <div class="glass-panel" style="margin-bottom: 0;">
+      <div style="color: var(--accent-cyan); font-size: 1.6rem; margin-bottom: 0.8rem;">
+        <i class="fa-solid fa-filter"></i>
+      </div>
+      <h3 style="font-size: 1.15rem; margin-bottom: 0.4rem;">1. Zero-Phase DSP</h3>
+      <p style="font-size: 0.84rem; line-height: 1.5;">
+        Butterworth bandpass (0.5–40 Hz) and notch filters eliminate respiration baseline wander and EMG noise without temporal phase distortion.
+      </p>
+    </div>
+
+    <div class="glass-panel" style="margin-bottom: 0;">
+      <div style="color: var(--accent-emerald); font-size: 1.6rem; margin-bottom: 0.8rem;">
+        <i class="fa-solid fa-wave-square"></i>
+      </div>
+      <h3 style="font-size: 1.15rem; margin-bottom: 0.4rem;">2. Pan-Tompkins QRS</h3>
+      <p style="font-size: 0.84rem; line-height: 1.5;">
+        Multi-stage differentiation, non-linear squaring, moving window integration, and a 250ms physiological refractory lock precisely localize R-peaks.
+      </p>
+    </div>
+
+    <div class="glass-panel" style="margin-bottom: 0;">
+      <div style="color: #c084fc; font-size: 1.6rem; margin-bottom: 0.8rem;">
+        <i class="fa-solid fa-chart-pie"></i>
+      </div>
+      <h3 style="font-size: 1.15rem; margin-bottom: 0.4rem;">3. Feature Extraction</h3>
+      <p style="font-size: 0.84rem; line-height: 1.5;">
+        Extracts 30 biomedical dimensions per beat: QRS area, peak-to-peak amplitude, ST level, statistical kurtosis, and HRV timing dynamics (Pre/Post RR).
+      </p>
+    </div>
+
+    <div class="glass-panel" style="margin-bottom: 0;">
+      <div style="color: var(--accent-crimson); font-size: 1.6rem; margin-bottom: 0.8rem;">
+        <i class="fa-solid fa-shield-virus"></i>
+      </div>
+      <h3 style="font-size: 1.15rem; margin-bottom: 0.4rem;">4. ML Anomaly Scoring</h3>
+      <p style="font-size: 0.84rem; line-height: 1.5;">
+        Isolation Forest isolates rare ectopic morphologies (e.g. PVCs and PACs) into a normalized continuous score [0, 1] with real-time telemetry alerts.
+      </p>
+    </div>
+  </div>
+</section>
+{% endblock %}

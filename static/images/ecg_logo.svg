@@ -1,0 +1,10 @@
+<!-- ECG Insight AI Heartbeat Icon -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="ecgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+  <path d="M10 50 L35 50 L42 20 L50 85 L58 35 L65 55 L72 50 L90 50" fill="none" stroke="url(#ecgGrad)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
