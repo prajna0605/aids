@@ -1,20 +1,28 @@
 """
 ECG Insight AI - Data Loader Module
-Handles loading MIT-BIH Arrhythmia Database records from PhysioNet,
-caching locally, parsing clinical annotations according to AAMI EC57 standards,
-loading user-uploaded custom ECG files, and generating synthetic ECG records.
+====================================
+Unified data ingestion engine supporting:
+1. PhysioNet MIT-BIH Arrhythmia Database (.dat, .hea, .atr) with local caching
+2. AAMI EC57 Clinical Annotation standard decoding
+3. User-uploaded custom ECG files (both continuous 1D recordings and 2D AAMI beat matrices)
+4. Configurable Data Allowance (time windowing, sample limits, decimation)
+5. Offline synthetic ECG generation with realistic P-QRS-T morphology & PVC injection
 """
 
-import os
 import io
+import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 import wfdb
 
-# MIT-BIH Arrhythmia Database Curated Records for Demo & Evaluation
-PRESET_RECORDS = {
+# ==============================================================================
+# 1. CLINICAL PRESETS & AAMI EC57 CLASSIFICATION STANDARDS
+# ==============================================================================
+
+PRESET_RECORDS: Dict[str, Dict[str, Any]] = {
     "100": {
         "title": "Record 100 — Baseline Normal Sinus Rhythm",
         "description": "Predominantly normal sinus rhythm with very few isolated ectopic beats. Ideal as a clean baseline.",
@@ -53,23 +61,15 @@ PRESET_RECORDS = {
     },
 }
 
-# AAMI EC57 Heartbeat Classification Mapping
-# Non-ectopic (Normal-like)
+# AAMI EC57 Beat Classes
 NORMAL_BEAT_SYMBOLS = {"N", "L", "R", "e", "j"}
-# Ventricular Ectopic Beats (VEB)
 VENTRICULAR_BEAT_SYMBOLS = {"V", "E", "!", "r"}
-# Supraventricular Ectopic Beats (SVEB)
 SUPRAVENTRICULAR_BEAT_SYMBOLS = {"A", "a", "J", "S"}
-# Fusion or Paced or Unknown
 OTHER_ANOMALOUS_SYMBOLS = {"F", "/", "f", "Q", "?"}
-
-# Combined set of all clinically anomalous beat symbols
 ALL_ANOMALOUS_SYMBOLS = VENTRICULAR_BEAT_SYMBOLS | SUPRAVENTRICULAR_BEAT_SYMBOLS | OTHER_ANOMALOUS_SYMBOLS
-
-# Non-beat annotation symbols (rhythm changes, artifact, measurement markers)
 NON_BEAT_SYMBOLS = {"+", "~", "|", "x", "[", "]", '"', "s", "t", "p", "D", "T"}
 
-ANNOTATION_DESCRIPTIONS = {
+ANNOTATION_DESCRIPTIONS: Dict[str, str] = {
     "N": "Normal Beat",
     "L": "Left Bundle Branch Block Beat",
     "R": "Right Bundle Branch Block Beat",
@@ -89,12 +89,94 @@ ANNOTATION_DESCRIPTIONS = {
     "~": "Signal Quality / Noise Marker",
 }
 
+# Mapping for Kaggle/AAMI integer labels (0=N, 1=SVEB/A, 2=VEB/V, 3=F, 4=Q)
+AAMI_LABEL_TO_SYMBOL = {0.0: "N", 1.0: "A", 2.0: "V", 3.0: "F", 4.0: "Q"}
+AAMI_LABEL_TO_DESC = {
+    0.0: "Normal sinus beat",
+    1.0: "Premature atrial contraction (PAC)",
+    2.0: "Premature ventricular contraction (PVC)",
+    3.0: "Fusion beat",
+    4.0: "Paced / unclassifiable beat",
+}
+
+
+# ==============================================================================
+# 2. CACHING & RECORD PACKAGING HELPERS
+# ==============================================================================
 
 def get_cache_dir() -> Path:
-    """Returns local cache directory path for downloaded records."""
+    """Returns local cache directory path for downloaded raw MIT-BIH records."""
     cache_path = Path(__file__).resolve().parent.parent / "data" / "mitdb"
     cache_path.mkdir(parents=True, exist_ok=True)
     return cache_path
+
+
+def get_npz_cache_dir() -> Path:
+    """Returns directory path for compressed parsed NPZ records."""
+    npz_dir = Path(__file__).resolve().parent.parent / "data" / "cache_npz"
+    npz_dir.mkdir(parents=True, exist_ok=True)
+    return npz_dir
+
+
+def _create_record_dict(
+    record_name: str,
+    signal: np.ndarray,
+    fs: int,
+    lead_name: str,
+    ann_samples: Optional[np.ndarray] = None,
+    ann_symbols: Optional[np.ndarray] = None,
+    ann_labels: Optional[np.ndarray] = None,
+    ann_descriptions: Optional[List[str]] = None,
+    is_synthetic: bool = False,
+    is_user_uploaded: bool = False,
+    original_fs: Optional[int] = None,
+    channel: int = 0,
+    allowance_meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Unified record constructor ensuring consistent schema across all loaders."""
+    total_samples = len(signal)
+    duration_sec = total_samples / fs if fs > 0 else 0.0
+
+    return {
+        "record_name": str(record_name),
+        "signal": signal,
+        "fs": int(fs),
+        "original_fs": int(original_fs) if original_fs is not None else int(fs),
+        "channel": int(channel),
+        "lead_name": str(lead_name),
+        "total_samples": total_samples,
+        "duration_sec": duration_sec,
+        "ann_samples": ann_samples if ann_samples is not None else np.array([], dtype=int),
+        "ann_symbols": ann_symbols if ann_symbols is not None else np.array([], dtype=object),
+        "ann_labels": ann_labels if ann_labels is not None else np.array([], dtype=int),
+        "ann_descriptions": ann_descriptions if ann_descriptions is not None else [],
+        "is_synthetic": is_synthetic,
+        "is_user_uploaded": is_user_uploaded,
+        "allowance_meta": allowance_meta or {},
+    }
+
+
+# ==============================================================================
+# 3. MIT-BIH DATABASE LOADER & ANNOTATION PARSER
+# ==============================================================================
+
+def _parse_wfdb_annotations(
+    annotation: Any, max_len: int
+) -> Tuple[List[int], List[str], List[int], List[str]]:
+    """Decodes WFDB annotation records into AAMI beat categories."""
+    ann_samples, ann_symbols, ann_labels, ann_desc = [], [], [], []
+    if annotation is None:
+        return ann_samples, ann_symbols, ann_labels, ann_desc
+
+    for s_idx, sym in zip(annotation.sample, annotation.symbol):
+        if s_idx < max_len and sym not in NON_BEAT_SYMBOLS:
+            ann_samples.append(int(s_idx))
+            ann_symbols.append(str(sym))
+            is_anomaly = 1 if sym in ALL_ANOMALOUS_SYMBOLS else 0
+            ann_labels.append(is_anomaly)
+            ann_desc.append(ANNOTATION_DESCRIPTIONS.get(sym, f"Beat type: {sym}"))
+
+    return ann_samples, ann_symbols, ann_labels, ann_desc
 
 
 def load_mitdb_record(
@@ -105,44 +187,24 @@ def load_mitdb_record(
 ) -> Dict[str, Any]:
     """
     Downloads or loads an MIT-BIH Arrhythmia Database record using WFDB.
-    Caches downloaded records locally to accelerate subsequent loads.
+    Accelerated with local compressed NPZ caching.
 
     Args:
         record_name: MIT-BIH record ID (e.g., '100', '106', '119')
         channel: ECG channel/lead index (default: 0)
-        max_seconds: Number of seconds to load (None for entire record, default: 120s)
+        max_seconds: Number of seconds to load (None for full record, default: 120s)
         pn_dir: PhysioNet database directory
 
     Returns:
-        Dictionary containing raw signal, sampling frequency, lead name, and beat annotations.
+        Structured dataset dictionary compatible with pipeline & UI.
     """
-    cache_dir = get_cache_dir()
-    local_rec_path = cache_dir / record_name
-
-    # Check if local record files exist (.dat and .hea)
-    dat_file = cache_dir / f"{record_name}.dat"
-    hea_file = cache_dir / f"{record_name}.hea"
-    atr_file = cache_dir / f"{record_name}.atr"
-
-    has_local = dat_file.exists() and hea_file.exists() and atr_file.exists()
-
-    # Determine max sample count if max_seconds provided
-    # MIT-BIH sampling rate is 360 Hz
     fs_est = 360
     sampto = int(max_seconds * fs_est) if max_seconds else None
+    npz_dir = get_npz_cache_dir()
+    npz_file = npz_dir / f"{record_name}_{max_seconds}_{channel}.npz"
 
-    # Fast npz cache check: check exact match or any available cached slice
-    npz_cache_dir = Path(__file__).resolve().parent.parent / "data" / "cache_npz"
-    npz_cache_dir.mkdir(parents=True, exist_ok=True)
-    npz_file = npz_cache_dir / f"{record_name}_{max_seconds}_{channel}.npz"
-
-    # Search candidates: exact match first, then any cached file for this record
-    candidate_files = []
-    if npz_file.exists():
-        candidate_files.append(npz_file)
-    else:
-        candidate_files.extend(list(npz_cache_dir.glob(f"{record_name}_*_{channel}.npz")))
-
+    # 1. Fast Cache Check: Load pre-extracted slice from NPZ if available
+    candidate_files = [npz_file] if npz_file.exists() else list(npz_dir.glob(f"{record_name}_*_{channel}.npz"))
     for cand in candidate_files:
         try:
             cached = np.load(str(cand), allow_pickle=True)
@@ -150,7 +212,7 @@ def load_mitdb_record(
             ann_s = cached["ann_samples"]
             ann_sym = cached["ann_symbols"]
             ann_lab = cached["ann_labels"]
-            ann_desc = cached["ann_descriptions"]
+            ann_desc = cached["ann_descriptions"].tolist()
 
             if sampto and len(sig) > sampto:
                 sig = sig[:sampto]
@@ -158,37 +220,35 @@ def load_mitdb_record(
                 ann_s = ann_s[mask]
                 ann_sym = ann_sym[mask]
                 ann_lab = ann_lab[mask]
-                ann_desc = ann_desc[mask]
+                ann_desc = [ann_desc[i] for i, m in enumerate(mask) if m]
 
-            return {
-                "record_name": str(cached["record_name"]),
-                "signal": sig,
-                "fs": int(cached["fs"]),
-                "channel": int(cached["channel"]),
-                "lead_name": str(cached["lead_name"]),
-                "total_samples": len(sig),
-                "duration_sec": len(sig) / int(cached["fs"]),
-                "ann_samples": ann_s,
-                "ann_symbols": ann_sym,
-                "ann_labels": ann_lab,
-                "ann_descriptions": ann_desc.tolist(),
-                "is_synthetic": False,
-            }
+            return _create_record_dict(
+                record_name=cached["record_name"],
+                signal=sig,
+                fs=int(cached["fs"]),
+                lead_name=str(cached["lead_name"]),
+                ann_samples=ann_s,
+                ann_symbols=ann_sym,
+                ann_labels=ann_lab,
+                ann_descriptions=ann_desc,
+                channel=channel,
+            )
         except Exception:
             continue
 
-    if has_local:
-        try:
-            record = wfdb.rdrecord(str(local_rec_path), sampto=sampto)
-            annotation = wfdb.rdann(str(local_rec_path), "atr", sampto=sampto)
-        except Exception:
-            record = wfdb.rdrecord(record_name, pn_dir=pn_dir, sampto=sampto)
-            try:
-                annotation = wfdb.rdann(record_name, "atr", pn_dir=pn_dir, sampto=sampto)
-            except Exception:
-                annotation = None
-    else:
-        # Stream on-demand slice directly from PhysioNet via HTTP range request
+    # 2. WFDB Extraction: Read from local cache or stream via PhysioNet
+    cache_dir = get_cache_dir()
+    local_rec_path = cache_dir / record_name
+    has_local = (cache_dir / f"{record_name}.dat").exists() and (cache_dir / f"{record_name}.hea").exists()
+
+    rec_target = str(local_rec_path) if has_local else record_name
+    rec_kwargs = {"sampto": sampto} if has_local else {"pn_dir": pn_dir, "sampto": sampto}
+
+    try:
+        record = wfdb.rdrecord(rec_target, **rec_kwargs)
+        annotation = wfdb.rdann(rec_target, "atr", **rec_kwargs)
+    except Exception:
+        # Fallback to direct PhysioNet streaming if local file was corrupt
         record = wfdb.rdrecord(record_name, pn_dir=pn_dir, sampto=sampto)
         try:
             annotation = wfdb.rdann(record_name, "atr", pn_dir=pn_dir, sampto=sampto)
@@ -199,38 +259,10 @@ def load_mitdb_record(
     signal = record.p_signal[:, channel].astype(np.float64)
     lead_name = record.sig_name[channel] if record.sig_name else f"Lead {channel}"
 
-    # Extract & decode annotations
-    ann_samples = []
-    ann_symbols = []
-    ann_labels = []  # 0 for normal, 1 for anomaly
-    ann_descriptions = []
+    # 3. Parse AAMI EC57 Annotations
+    ann_samples, ann_symbols, ann_labels, ann_descriptions = _parse_wfdb_annotations(annotation, len(signal))
 
-    if annotation is not None:
-        for s_idx, sym in zip(annotation.sample, annotation.symbol):
-            # Only consider valid samples within range and valid heartbeat annotations
-            if s_idx < len(signal) and sym not in NON_BEAT_SYMBOLS:
-                ann_samples.append(int(s_idx))
-                ann_symbols.append(str(sym))
-                is_anomaly = 1 if sym in ALL_ANOMALOUS_SYMBOLS else 0
-                ann_labels.append(is_anomaly)
-                desc = ANNOTATION_DESCRIPTIONS.get(sym, f"Beat type: {sym}")
-                ann_descriptions.append(desc)
-
-    result = {
-        "record_name": record_name,
-        "signal": signal,
-        "fs": fs,
-        "channel": channel,
-        "lead_name": lead_name,
-        "total_samples": len(signal),
-        "duration_sec": len(signal) / fs,
-        "ann_samples": np.array(ann_samples, dtype=int),
-        "ann_symbols": np.array(ann_symbols, dtype=object),
-        "ann_labels": np.array(ann_labels, dtype=int),
-        "ann_descriptions": ann_descriptions,
-        "is_synthetic": False,
-    }
-
+    # 4. Save to NPZ Cache for future ultra-fast loads
     try:
         np.savez_compressed(
             str(npz_file),
@@ -241,16 +273,30 @@ def load_mitdb_record(
             lead_name=lead_name,
             total_samples=len(signal),
             duration_sec=len(signal) / fs,
-            ann_samples=result["ann_samples"],
-            ann_symbols=result["ann_symbols"],
-            ann_labels=result["ann_labels"],
+            ann_samples=np.array(ann_samples, dtype=int),
+            ann_symbols=np.array(ann_symbols, dtype=object),
+            ann_labels=np.array(ann_labels, dtype=int),
             ann_descriptions=np.array(ann_descriptions, dtype=object),
         )
     except Exception:
         pass
 
-    return result
+    return _create_record_dict(
+        record_name=record_name,
+        signal=signal,
+        fs=fs,
+        lead_name=lead_name,
+        ann_samples=np.array(ann_samples, dtype=int),
+        ann_symbols=np.array(ann_symbols, dtype=object),
+        ann_labels=np.array(ann_labels, dtype=int),
+        ann_descriptions=ann_descriptions,
+        channel=channel,
+    )
 
+
+# ==============================================================================
+# 4. SYNTHETIC ECG GENERATOR
+# ==============================================================================
 
 def generate_synthetic_ecg(
     duration_sec: int = 60,
@@ -264,30 +310,15 @@ def generate_synthetic_ecg(
     Generates a realistic synthetic ECG time series with customizable Premature
     Ventricular Contractions (PVCs), baseline wander, and high-frequency noise.
     Provides offline demo support and reproducible benchmark scenarios.
-
-    Args:
-        duration_sec: Length of generated recording in seconds
-        fs: Sampling rate in Hz
-        heart_rate: Base beats per minute
-        noise_level: Amplitude of Gaussian noise and 50Hz hum
-        anomaly_prob: Probability of injecting an ectopic beat (PVC)
-        random_state: Random seed for repeatability
-
-    Returns:
-        Structured dataset dictionary compatible with MIT-BIH format.
     """
     np.random.seed(random_state)
     total_samples = int(duration_sec * fs)
     time = np.linspace(0, duration_sec, total_samples, endpoint=False)
     signal = np.zeros(total_samples, dtype=np.float64)
 
-    # Base RR interval in seconds
     mean_rr = 60.0 / heart_rate
-
-    # Generate sequence of beat timestamps
-    current_time = 0.6  # initial offset
-    beat_times = []
-    beat_types = []  # 'N' or 'V'
+    current_time = 0.6
+    beat_times, beat_types = [], []
 
     while current_time < duration_sec - 0.5:
         is_pvc = np.random.rand() < anomaly_prob and len(beat_times) > 0
@@ -299,10 +330,8 @@ def generate_synthetic_ecg(
                 break
             beat_times.append(current_time)
             beat_types.append("V")
-            # Compensatory pause for next beat
             current_time += mean_rr * np.random.uniform(1.25, 1.40)
         else:
-            # Normal beat with slight physiological HRV jitter
             rr = mean_rr * np.random.uniform(0.95, 1.05)
             current_time += rr
             if current_time >= duration_sec - 0.5:
@@ -310,12 +339,8 @@ def generate_synthetic_ecg(
             beat_times.append(current_time)
             beat_types.append("N")
 
-    ann_samples = []
-    ann_symbols = []
-    ann_labels = []
-    ann_descriptions = []
+    ann_samples, ann_symbols, ann_labels, ann_descriptions = [], [], [], []
 
-    # Synthesize waveforms for each beat
     for b_time, b_type in zip(beat_times, beat_types):
         r_idx = int(b_time * fs)
         if r_idx >= total_samples:
@@ -331,69 +356,56 @@ def generate_synthetic_ecg(
 
         if b_type == "N":
             # Normal P-QRS-T complex
-            # P wave: small positive bump ~160ms before R
             p_center = b_time - 0.16
             signal += 0.20 * np.exp(-((time - p_center) ** 2) / (2 * (0.025**2)))
 
-            # Q wave: small negative deflection ~40ms before R
             q_center = b_time - 0.04
             signal -= 0.18 * np.exp(-((time - q_center) ** 2) / (2 * (0.012**2)))
 
-            # R wave: tall sharp positive peak
             signal += 1.25 * np.exp(-((time - b_time) ** 2) / (2 * (0.015**2)))
 
-            # S wave: negative deflection ~40ms after R
             s_center = b_time + 0.04
             signal -= 0.35 * np.exp(-((time - s_center) ** 2) / (2 * (0.014**2)))
 
-            # T wave: broader positive bump ~220ms after R
             t_center = b_time + 0.22
             signal += 0.35 * np.exp(-((time - t_center) ** 2) / (2 * (0.045**2)))
-
         else:
-            # Ventricular Ectopic Beat (PVC):
-            # No preceding P wave, wide bizarre biphasic/inverted QRS complex, discordant inverted T wave
-            # Widened notched main deflection
+            # Ventricular Ectopic Beat (PVC)
             signal += 1.60 * np.exp(-((time - b_time) ** 2) / (2 * (0.042**2)))
-            # Deep wide S deflection
             s_center = b_time + 0.08
             signal -= 1.10 * np.exp(-((time - s_center) ** 2) / (2 * (0.038**2)))
-            # Discordant inverted wide T wave
             t_center = b_time + 0.26
             signal -= 0.45 * np.exp(-((time - t_center) ** 2) / (2 * (0.065**2)))
 
-    # Add realistic baseline wander (low frequency breathing drift 0.25 Hz + 0.1 Hz)
+    # Baseline wander (respiratory drift) & high-frequency interference
     baseline_wander = 0.25 * np.sin(2 * np.pi * 0.22 * time) + 0.12 * np.cos(2 * np.pi * 0.08 * time)
-
-    # Add 50 Hz powerline interference
     powerline = (noise_level * 0.6) * np.sin(2 * np.pi * 50.0 * time)
-
-    # Add physiological high-frequency electromyographic (EMG) noise
     emg_noise = np.random.normal(0, noise_level, total_samples)
 
     final_signal = signal + baseline_wander + powerline + emg_noise
 
-    return {
-        "record_name": "SYNTH-75",
-        "signal": final_signal,
-        "fs": fs,
-        "channel": 0,
-        "lead_name": "Synthetic Lead II",
-        "total_samples": total_samples,
-        "duration_sec": duration_sec,
-        "ann_samples": np.array(ann_samples, dtype=int),
-        "ann_symbols": np.array(ann_symbols, dtype=object),
-        "ann_labels": np.array(ann_labels, dtype=int),
-        "ann_descriptions": ann_descriptions,
-        "is_synthetic": True,
-    }
+    return _create_record_dict(
+        record_name="SYNTH-75",
+        signal=final_signal,
+        fs=fs,
+        lead_name="Synthetic Lead II",
+        ann_samples=np.array(ann_samples, dtype=int),
+        ann_symbols=np.array(ann_symbols, dtype=object),
+        ann_labels=np.array(ann_labels, dtype=int),
+        ann_descriptions=ann_descriptions,
+        is_synthetic=True,
+    )
 
+
+# ==============================================================================
+# 5. CUSTOM CSV INGESTION & AAMI MATRIX RECONSTRUCTION
+# ==============================================================================
 
 def _read_csv_smart(buf: io.BytesIO, nrows: Optional[int] = None) -> Tuple[pd.DataFrame, bool, bool]:
     """
     Intelligently inspects uploaded CSV bytes to detect:
-    1. Whether the first line is numeric (headerless) vs text headers
-    2. Whether the file is an AAMI pre-segmented heartbeat matrix (e.g. mitbih_train/test with 187/188 cols)
+    1. Headerless numeric data vs text header row
+    2. AAMI pre-segmented heartbeat matrix (e.g. 187/188 columns) vs continuous multi-lead signal
     Returns (dataframe, is_heartbeat_matrix, is_numeric_header).
     """
     raw_head = buf.read(64 * 1024)
@@ -444,7 +456,7 @@ def get_custom_file_preview(file_bytes: bytes) -> Dict[str, Any]:
     """
     try:
         preview_buf = io.BytesIO(file_bytes[: min(len(file_bytes), 256 * 1024)])
-        df_preview, is_beat_matrix, is_num_header = _read_csv_smart(preview_buf, nrows=20)
+        df_preview, is_beat_matrix, _ = _read_csv_smart(preview_buf, nrows=20)
 
         if is_beat_matrix:
             numeric_cols = ["Continuous Rhythm Strip (Reconstructed from Beats)", "Sample_0", "Sample_1"]
@@ -471,6 +483,175 @@ def get_custom_file_preview(file_bytes: bytes) -> Dict[str, Any]:
         }
 
 
+def _reconstruct_rhythm_from_beats(
+    df: pd.DataFrame,
+    fs: int,
+    filename: str,
+    file_bytes_len: int,
+    start_second: float = 0.0,
+    duration_allowance_sec: Optional[float] = 120.0,
+    downsample_factor: int = 1,
+) -> Dict[str, Any]:
+    """
+    Vectorized reconstruction of a continuous ECG rhythm strip from pre-segmented AAMI heartbeat rows
+    (e.g., mitbih_test.csv). Accurately extracts ground-truth class labels from column 188.
+    """
+    num_cols = df.shape[1]
+    samples_per_beat = 187
+    spacing = 25  # Physiological resting baseline between heartbeats
+    beat_stride = samples_per_beat + spacing
+
+    target_samples = (
+        int(duration_allowance_sec * fs)
+        if (duration_allowance_sec and duration_allowance_sec > 0)
+        else (len(df) * beat_stride)
+    )
+    beats_needed = min(len(df), max(1, target_samples // beat_stride))
+
+    start_beat = min(len(df) - 1, int(start_second * fs / beat_stride))
+    end_beat = min(len(df), start_beat + beats_needed)
+
+    # 1. Extract beat voltage matrix & ground-truth labels
+    beats_data = df.iloc[start_beat:end_beat, :187].to_numpy(dtype=np.float64)
+    n_beats = len(beats_data)
+    has_labels = (num_cols == 188)
+    raw_labels = df.iloc[start_beat:end_beat, 187].to_numpy(dtype=np.float64) if has_labels else None
+
+    # 2. High-performance vectorized waveform assembly
+    # Append flat resting baseline (equal to last beat sample) to each beat, then flatten
+    padding = np.repeat(beats_data[:, -1:], spacing, axis=1)
+    signal_slice = np.hstack([beats_data, padding]).ravel()
+
+    # 3. Vectorized R-peak and annotation calculation
+    r_peaks_relative = np.argmax(beats_data, axis=1)
+    beat_offsets = np.arange(n_beats) * beat_stride
+    ann_samples = beat_offsets + r_peaks_relative
+
+    ann_symbols = []
+    ann_labels = []
+    ann_descriptions = []
+
+    if has_labels and raw_labels is not None:
+        for lbl in raw_labels:
+            ann_symbols.append(AAMI_LABEL_TO_SYMBOL.get(lbl, "V" if lbl > 0 else "N"))
+            ann_labels.append(1 if lbl > 0 else 0)
+            ann_descriptions.append(AAMI_LABEL_TO_DESC.get(lbl, "Ectopic beat"))
+
+    # 4. Optional Decimation
+    effective_fs = fs
+    if downsample_factor > 1:
+        signal_slice = signal_slice[::downsample_factor]
+        effective_fs = max(10, fs // downsample_factor)
+        ann_samples = ann_samples // downsample_factor
+
+    final_samples = len(signal_slice)
+    final_duration = final_samples / effective_fs
+    memory_mb = signal_slice.nbytes / (1024 * 1024)
+
+    allowance_meta = {
+        "raw_file_size_mb": file_bytes_len / (1024 * 1024),
+        "orig_total_samples": len(df) * beat_stride,
+        "orig_total_duration_sec": (len(df) * beat_stride) / fs,
+        "processed_samples": final_samples,
+        "processed_duration_sec": final_duration,
+        "start_second": start_second,
+        "duration_allowance_sec": duration_allowance_sec,
+        "downsample_factor": downsample_factor,
+        "memory_usage_mb": memory_mb,
+        "available_columns": ["Continuous Rhythm Strip (Reconstructed from Beats)"],
+    }
+
+    return _create_record_dict(
+        record_name=filename,
+        signal=signal_slice,
+        fs=effective_fs,
+        lead_name="AAMI Lead (Continuous Rhythm)",
+        ann_samples=np.array(ann_samples, dtype=int),
+        ann_symbols=np.array(ann_symbols, dtype=object),
+        ann_labels=np.array(ann_labels, dtype=int),
+        ann_descriptions=ann_descriptions,
+        is_user_uploaded=True,
+        original_fs=fs,
+        allowance_meta=allowance_meta,
+    )
+
+
+def _load_continuous_timeseries(
+    df: pd.DataFrame,
+    fs: int,
+    filename: str,
+    file_bytes_len: int,
+    selected_column: Optional[str] = None,
+    start_second: float = 0.0,
+    duration_allowance_sec: Optional[float] = 120.0,
+    max_samples_allowance: Optional[int] = 500_000,
+    downsample_factor: int = 1,
+) -> Dict[str, Any]:
+    """Slices continuous multi-lead time series and applies allowance constraints."""
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) == 0:
+        raise ValueError("Uploaded file does not contain any numeric ECG voltage columns.")
+
+    signal_col = selected_column if (selected_column and selected_column in df.columns) else numeric_cols[0]
+
+    # Clean lead name if numeric or scientific notation
+    lead_name = str(signal_col)
+    if "e+" in lead_name or "e-" in lead_name or lead_name.replace(".", "", 1).isdigit():
+        lead_name = "Lead 1"
+
+    raw_signal = df[signal_col].to_numpy(dtype=np.float64)
+    raw_signal = raw_signal[np.isfinite(raw_signal)]
+
+    orig_total_samples = len(raw_signal)
+    orig_total_duration_sec = orig_total_samples / fs
+
+    # 1. Time Window Slicing
+    start_idx = int(start_second * fs) if (0 <= int(start_second * fs) < orig_total_samples) else 0
+    end_idx = (
+        min(orig_total_samples, start_idx + int(duration_allowance_sec * fs))
+        if (duration_allowance_sec and duration_allowance_sec > 0)
+        else orig_total_samples
+    )
+    signal_slice = raw_signal[start_idx:end_idx]
+
+    # 2. Max Samples Allowance Safeguard
+    if max_samples_allowance and len(signal_slice) > max_samples_allowance:
+        signal_slice = signal_slice[:max_samples_allowance]
+
+    # 3. Decimation
+    effective_fs = fs
+    if downsample_factor > 1:
+        signal_slice = signal_slice[::downsample_factor]
+        effective_fs = max(10, fs // downsample_factor)
+
+    final_samples = len(signal_slice)
+    final_duration = final_samples / effective_fs
+    memory_mb = signal_slice.nbytes / (1024 * 1024)
+
+    allowance_meta = {
+        "raw_file_size_mb": file_bytes_len / (1024 * 1024),
+        "orig_total_samples": orig_total_samples,
+        "orig_total_duration_sec": orig_total_duration_sec,
+        "processed_samples": final_samples,
+        "processed_duration_sec": final_duration,
+        "start_second": start_second,
+        "duration_allowance_sec": duration_allowance_sec,
+        "downsample_factor": downsample_factor,
+        "memory_usage_mb": memory_mb,
+        "available_columns": list(numeric_cols),
+    }
+
+    return _create_record_dict(
+        record_name=filename,
+        signal=signal_slice,
+        fs=effective_fs,
+        lead_name=lead_name,
+        is_user_uploaded=True,
+        original_fs=fs,
+        allowance_meta=allowance_meta,
+    )
+
+
 def load_custom_ecg_csv(
     file_bytes: bytes,
     fs: int = 360,
@@ -483,12 +664,10 @@ def load_custom_ecg_csv(
 ) -> Dict[str, Any]:
     """
     Parses a user-uploaded CSV/TXT ECG signal with configurable Data Allowance controls.
-    Handles both:
-    1. Standard continuous multi-lead ECG time-series
-    2. AAMI pre-segmented heartbeat datasets (e.g. mitbih_test.csv/mitbih_train.csv) by reconstructing
-       a natural continuous ECG rhythm strip with ground-truth clinical annotations.
+    Automatically detects whether the file is a continuous recording or a pre-segmented
+    AAMI heartbeat matrix, routing to the specialized high-performance loader.
     """
-    df, is_beat_matrix, is_num_header = _read_csv_smart(io.BytesIO(file_bytes))
+    df, is_beat_matrix, _ = _read_csv_smart(io.BytesIO(file_bytes))
 
     # Detect if we should reconstruct continuous rhythm strip from heartbeat rows
     is_reconstruct_mode = is_beat_matrix and (
@@ -500,168 +679,24 @@ def load_custom_ecg_csv(
     )
 
     if is_reconstruct_mode:
-        num_cols = df.shape[1]
-        samples_per_beat = 187
-        spacing = 25  # Physiological resting baseline between beats
-        beat_stride = samples_per_beat + spacing
-
-        target_samples = (
-            int(duration_allowance_sec * fs)
-            if (duration_allowance_sec and duration_allowance_sec > 0)
-            else (len(df) * beat_stride)
+        return _reconstruct_rhythm_from_beats(
+            df=df,
+            fs=fs,
+            filename=filename,
+            file_bytes_len=len(file_bytes),
+            start_second=start_second,
+            duration_allowance_sec=duration_allowance_sec,
+            downsample_factor=downsample_factor,
         )
-        beats_needed = min(len(df), max(1, target_samples // beat_stride))
 
-        start_beat = min(len(df) - 1, int(start_second * fs / beat_stride))
-        end_beat = min(len(df), start_beat + beats_needed)
-
-        beats_data = df.iloc[start_beat:end_beat, :187].to_numpy(dtype=np.float64)
-        has_labels = (num_cols == 188)
-        raw_labels = df.iloc[start_beat:end_beat, 187].to_numpy() if has_labels else None
-
-        signal_parts = []
-        ann_samples = []
-        ann_symbols = []
-        ann_labels = []
-        ann_descriptions = []
-
-        symbol_map = {0.0: "N", 1.0: "A", 2.0: "V", 3.0: "F", 4.0: "Q"}
-        desc_map = {
-            0.0: "Normal sinus beat",
-            1.0: "Premature atrial contraction (PAC)",
-            2.0: "Premature ventricular contraction (PVC)",
-            3.0: "Fusion beat",
-            4.0: "Paced / unclassifiable beat",
-        }
-
-        curr_offset = 0
-        for i in range(len(beats_data)):
-            b_wave = beats_data[i]
-            r_peak_rel = int(np.argmax(b_wave))
-            ann_samples.append(curr_offset + r_peak_rel)
-            if has_labels:
-                lbl = float(raw_labels[i])
-                ann_symbols.append(symbol_map.get(lbl, "V" if lbl > 0 else "N"))
-                ann_labels.append(1 if lbl > 0 else 0)
-                ann_descriptions.append(desc_map.get(lbl, "Ectopic beat"))
-
-            signal_parts.append(b_wave)
-            signal_parts.append(np.full(spacing, b_wave[-1]))
-            curr_offset += len(b_wave) + spacing
-
-        signal_slice = np.concatenate(signal_parts).astype(np.float64)
-        effective_fs = fs
-
-        if downsample_factor > 1:
-            signal_slice = signal_slice[::downsample_factor]
-            effective_fs = max(10, fs // downsample_factor)
-            ann_samples = [s // downsample_factor for s in ann_samples]
-
-        final_samples = len(signal_slice)
-        final_duration = final_samples / effective_fs
-        memory_mb = (signal_slice.nbytes) / (1024 * 1024)
-
-        return {
-            "record_name": filename,
-            "signal": signal_slice,
-            "fs": effective_fs,
-            "original_fs": fs,
-            "channel": 0,
-            "lead_name": "AAMI Lead (Continuous Rhythm)",
-            "total_samples": final_samples,
-            "duration_sec": final_duration,
-            "ann_samples": np.array(ann_samples, dtype=int),
-            "ann_symbols": np.array(ann_symbols, dtype=object),
-            "ann_labels": np.array(ann_labels, dtype=int),
-            "ann_descriptions": ann_descriptions,
-            "is_synthetic": False,
-            "is_user_uploaded": True,
-            "allowance_meta": {
-                "raw_file_size_mb": len(file_bytes) / (1024 * 1024),
-                "orig_total_samples": len(df) * beat_stride,
-                "orig_total_duration_sec": (len(df) * beat_stride) / fs,
-                "processed_samples": final_samples,
-                "processed_duration_sec": final_duration,
-                "start_second": start_second,
-                "duration_allowance_sec": duration_allowance_sec,
-                "downsample_factor": downsample_factor,
-                "memory_usage_mb": memory_mb,
-                "available_columns": ["Continuous Rhythm Strip (Reconstructed from Beats)"],
-            },
-        }
-
-    # Standard continuous multi-lead signal processing
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_cols) == 0:
-        raise ValueError("Uploaded file does not contain any numeric ECG voltage columns.")
-
-    if selected_column and selected_column in df.columns:
-        signal_col = selected_column
-    else:
-        signal_col = numeric_cols[0]
-
-    # Clean signal col name if numeric/float
-    lead_name = str(signal_col)
-    if "e+" in lead_name or "e-" in lead_name:
-        lead_name = "Lead 1"
-
-    raw_signal = df[signal_col].to_numpy(dtype=np.float64)
-    valid_mask = np.isfinite(raw_signal)
-    raw_signal = raw_signal[valid_mask]
-
-    orig_total_samples = len(raw_signal)
-    orig_total_duration_sec = orig_total_samples / fs
-
-    # 1. Apply Time Window Allowance Slicing
-    start_idx = int(start_second * fs)
-    if start_idx >= orig_total_samples:
-        start_idx = 0
-
-    if duration_allowance_sec and duration_allowance_sec > 0:
-        end_idx = start_idx + int(duration_allowance_sec * fs)
-        signal_slice = raw_signal[start_idx:min(orig_total_samples, end_idx)]
-    else:
-        signal_slice = raw_signal[start_idx:]
-
-    # 2. Apply Max Samples Allowance Safeguard
-    if max_samples_allowance and len(signal_slice) > max_samples_allowance:
-        signal_slice = signal_slice[:max_samples_allowance]
-
-    # 3. Apply Decimation Allowance Factor if requested (>1)
-    effective_fs = fs
-    if downsample_factor > 1:
-        signal_slice = signal_slice[::downsample_factor]
-        effective_fs = max(10, fs // downsample_factor)
-
-    final_samples = len(signal_slice)
-    final_duration = final_samples / effective_fs
-    memory_mb = (signal_slice.nbytes) / (1024 * 1024)
-
-    return {
-        "record_name": filename,
-        "signal": signal_slice,
-        "fs": effective_fs,
-        "original_fs": fs,
-        "channel": 0,
-        "lead_name": lead_name,
-        "total_samples": final_samples,
-        "duration_sec": final_duration,
-        "ann_samples": np.array([], dtype=int),
-        "ann_symbols": np.array([], dtype=object),
-        "ann_labels": np.array([], dtype=int),
-        "ann_descriptions": [],
-        "is_synthetic": False,
-        "is_user_uploaded": True,
-        "allowance_meta": {
-            "raw_file_size_mb": len(file_bytes) / (1024 * 1024),
-            "orig_total_samples": orig_total_samples,
-            "orig_total_duration_sec": orig_total_duration_sec,
-            "processed_samples": final_samples,
-            "processed_duration_sec": final_duration,
-            "start_second": start_second,
-            "duration_allowance_sec": duration_allowance_sec,
-            "downsample_factor": downsample_factor,
-            "memory_usage_mb": memory_mb,
-            "available_columns": list(numeric_cols),
-        },
-    }
+    return _load_continuous_timeseries(
+        df=df,
+        fs=fs,
+        filename=filename,
+        file_bytes_len=len(file_bytes),
+        selected_column=selected_column,
+        start_second=start_second,
+        duration_allowance_sec=duration_allowance_sec,
+        max_samples_allowance=max_samples_allowance,
+        downsample_factor=downsample_factor,
+    )
