@@ -105,8 +105,11 @@ ecg-insight-ai/
 ├── src/
 │   ├── preprocessing.py        # Butterworth & notch filtering, Pan-Tompkins QRS detector
 │   ├── features.py             # Heartbeat segmentation & 30 biomedical features
-│   ├── train.py                # Model training script
-│   └── evaluate.py             # Model validation & metrics computation
+│   ├── models.py               # ML anomaly detectors (Isolation Forest, One-Class SVM, LOF)
+│   ├── train.py                # Pipeline model training and persistence
+│   ├── evaluation.py           # Unified metrics computation & placement report generator
+│   ├── evaluate.py             # CLI evaluation runner
+│   └── visualizer.py           # Interactive Plotly telemetry charts
 ├── models/
 │   └── model.joblib            # Trained Isolation Forest ML bundle
 ├── templates/
@@ -115,19 +118,25 @@ ecg-insight-ai/
 │   ├── results.html            # Results & interactive Plotly telemetry
 │   └── evaluation.html         # Evaluation & benchmark metrics page
 ├── static/
-│   ├── css/
-│   │   └── style.css           # Vanilla CSS3 clinical telemetry design system
-│   ├── js/
-│   │   └── main.js             # Vanilla JS for tabs, dropzone, & Plotly charts
-│   └── images/
-│       └── ecg_logo.svg        # Application vector branding asset
+│   ├── css/style.css           # Vanilla CSS3 clinical telemetry design system
+│   ├── js/main.js              # Vanilla JS for tabs, dropzone, & Plotly charts
+│   └── images/ecg_logo.svg     # Application vector branding asset
 ├── notebooks/
-│   └── 01_eda.ipynb            # Jupyter exploratory data analysis walkthrough
+│   ├── 01_eda.ipynb            # Exploratory data analysis walkthrough
+│   └── ecg-heartbeat-categorization-using-cnn.ipynb # PyTorch 1D-CNN Arrhythmia Categorization
+├── ecg-heartbeat-categorization-using-cnn.ipynb     # Root notebook link for direct IDE access
 ├── data/
 │   ├── README.md               # MIT-BIH Arrhythmia Database documentation
-│   └── cache_npz/              # Fast pre-cached numpy archives
+│   ├── mitbih_train.csv        # 187-sample standardized training set (18,200 beats)
+│   └── mitbih_test.csv         # 187-sample standardized held-out test set (4,500 beats)
 ├── tests/
-│   └── test_app.py             # 8 unit and integration tests (100% passing)
+│   ├── test_app.py             # Flask endpoints & routing integration tests
+│   ├── test_pipeline.py        # Signal processing & ML pipeline tests
+│   └── test_upload_allowance.py# High-capacity upload allowance & decimation tests
+├── scripts/
+│   ├── build_mitbih_dataset.py # Script to extract standardized vectors from PhysioNet
+│   ├── precache_records.py     # Pre-cache sample records for instant response
+│   └── test_run_notebook.py    # Automated headless verification runner for notebook
 ├── requirements.txt            # Production dependencies
 ├── README.md                   # Complete documentation
 └── .gitignore                  # Git ignore file

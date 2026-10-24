@@ -194,3 +194,70 @@ This project demonstrates end-to-end competencies in biomedical data science, ti
 *Disclaimer: Educational research prototype. Not intended for direct medical diagnostic use.*
 """
     return report
+
+
+def run_evaluation(
+    model_path: str = "models/model.joblib",
+    test_record: str = "119",
+    threshold: float = 0.50,
+) -> Dict[str, Any]:
+    """
+    Evaluates the model on held-out test data and returns quantitative metrics dictionary.
+    """
+    from src.data_loader import load_mitdb_record, generate_synthetic_ecg
+    from src.preprocessing import (
+        preprocess_ecg_signal,
+        pan_tompkins_r_peak_detection,
+        match_peaks_to_annotations,
+    )
+    from src.features import segment_heartbeats, extract_ecg_features
+    from src.train import load_trained_model
+
+    bundle = load_trained_model(model_path)
+    model = bundle["model"]
+    scaler = bundle["scaler"]
+
+    # Load test record with ground-truth annotations
+    try:
+        rec_data = load_mitdb_record(test_record, max_seconds=120)
+    except Exception:
+        rec_data = generate_synthetic_ecg(duration_sec=90, anomaly_prob=0.22, random_state=999)
+
+    prep = preprocess_ecg_signal(rec_data["signal"], fs=rec_data["fs"])
+    peaks = pan_tompkins_r_peak_detection(prep["cleaned"], fs=rec_data["fs"])
+    valid_peaks, waveforms = segment_heartbeats(prep["cleaned"], peaks, fs=rec_data["fs"])
+    features, _ = extract_ecg_features(waveforms, valid_peaks, fs=rec_data["fs"])
+
+    # Match peaks to annotations
+    y_true, matched_symbols, _ = match_peaks_to_annotations(
+        valid_peaks,
+        rec_data["ann_samples"],
+        rec_data["ann_labels"],
+        rec_data["ann_symbols"],
+        fs=rec_data["fs"],
+    )
+
+    # Scale features and predict
+    X_scaled = scaler.transform(features)
+    raw_scores = model.decision_function(X_scaled)
+    inverted = -raw_scores
+    s_min, s_max = np.min(inverted), np.max(inverted)
+    if s_max - s_min > 1e-6:
+        anomaly_scores = (inverted - s_min) / (s_max - s_min)
+    else:
+        anomaly_scores = np.zeros(len(features))
+
+    y_pred = (anomaly_scores >= threshold).astype(int)
+
+    base_metrics = compute_metrics(y_true, y_pred, anomaly_scores)
+    base_metrics["record_name"] = rec_data["record_name"]
+
+    print(f"--- Evaluation on Record {test_record} ---")
+    print(f"Accuracy:    {base_metrics['accuracy'] * 100:.1f}%")
+    print(f"Sensitivity: {base_metrics['recall'] * 100:.1f}%")
+    print(f"Specificity: {base_metrics['specificity'] * 100:.1f}%")
+    print(f"Precision:   {base_metrics['precision'] * 100:.1f}%")
+    print(f"F1-Score:    {base_metrics['f1']:.3f}")
+    print(f"ROC-AUC:     {base_metrics['roc_auc']:.3f}")
+
+    return base_metrics
