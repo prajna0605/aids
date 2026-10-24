@@ -195,8 +195,8 @@ function renderECGPlot(containerId, telemetry) {
     y: signal,
     type: 'scatter',
     mode: 'lines',
-    name: `ECG (${lead_name || 'MLII'})`,
-    line: { color: '#00f0ff', width: 1.5 },
+    name: `ECG (${lead_name || 'Lead'})`,
+    line: { color: '#0284c7', width: 1.5 },
     hoverinfo: 'x+y'
   });
 
@@ -220,9 +220,9 @@ function renderECGPlot(containerId, telemetry) {
     if (isAno) {
       anoX.push(t);
       anoY.push(y);
-      anoText.push(`⚠ POTENTIAL ANOMALY<br>Beat #${i+1}<br>Score: ${score}`);
+      anoText.push(`⚠ Flagged Anomaly<br>Beat #${i+1}<br>Score: ${score}`);
 
-      // Add vertical hazard highlight (-150ms to +250ms)
+      // Add soft red highlight window
       shadedRects.push({
         type: 'rect',
         xref: 'x',
@@ -231,7 +231,7 @@ function renderECGPlot(containerId, telemetry) {
         x1: Math.min(time[time.length - 1], t + 0.20),
         y0: 0,
         y1: 1,
-        fillcolor: 'rgba(255, 51, 102, 0.18)',
+        fillcolor: 'rgba(239, 68, 68, 0.12)',
         line: { width: 0 },
         layer: 'below'
       });
@@ -252,7 +252,7 @@ function renderECGPlot(containerId, telemetry) {
       name: 'Normal Beat',
       marker: {
         symbol: 'circle',
-        size: 8,
+        size: 7,
         color: '#10b981',
         line: { color: '#ffffff', width: 1 }
       },
@@ -271,41 +271,43 @@ function renderECGPlot(containerId, telemetry) {
       name: 'Flagged Anomaly',
       marker: {
         symbol: 'diamond',
-        size: 13,
-        color: '#ff3366',
+        size: 11,
+        color: '#dc2626',
         line: { color: '#ffffff', width: 1.5 }
       },
       text: anoX.map(() => '⚠'),
       textposition: 'top center',
-      textfont: { color: '#ff3366', size: 14 },
+      textfont: { color: '#dc2626', size: 13 },
       hovertext: anoText,
       hoverinfo: 'text+x+y'
     });
   }
 
   const layout = {
-    paper_bgcolor: '#070b14',
-    plot_bgcolor: '#0e1626',
-    font: { color: '#f8fafc', family: 'Inter, sans-serif' },
-    margin: { l: 50, r: 30, t: 30, b: 40 },
-    height: 440,
+    paper_bgcolor: '#ffffff',
+    plot_bgcolor: '#ffffff',
+    font: { color: '#0f172a', family: 'Inter, sans-serif' },
+    margin: { l: 50, r: 25, t: 30, b: 40 },
+    height: 420,
     xaxis: {
       title: 'Time (seconds)',
-      gridcolor: '#1e293b',
-      zerolinecolor: '#1e293b',
-      rangeslider: { visible: true, thickness: 0.08, bgcolor: '#0b1220' }
+      gridcolor: '#f1f5f9',
+      zerolinecolor: '#e2e8f0',
+      rangeslider: { visible: true, thickness: 0.08, bgcolor: '#f8fafc' }
     },
     yaxis: {
       title: 'Amplitude (Normalized mV)',
-      gridcolor: '#1e293b',
-      zerolinecolor: '#1e293b'
+      gridcolor: '#f1f5f9',
+      zerolinecolor: '#e2e8f0'
     },
     legend: {
       orientation: 'h',
       y: 1.05,
       x: 1,
       xanchor: 'right',
-      bgcolor: 'rgba(14, 22, 38, 0.85)'
+      bgcolor: 'rgba(255, 255, 255, 0.95)',
+      bordercolor: '#e2e8f0',
+      borderwidth: 1
     },
     shapes: shadedRects
   };
@@ -346,8 +348,8 @@ function renderTachogramPlot(containerId, telemetry) {
     type: 'scatter',
     mode: 'lines+markers',
     name: 'RR Interval (ms)',
-    line: { color: '#38bdf8', width: 1.5 },
-    marker: { size: 5, color: '#00f0ff' },
+    line: { color: '#2563eb', width: 1.5 },
+    marker: { size: 5, color: '#0284c7' },
     xaxis: 'x',
     yaxis: 'y'
   };
@@ -358,10 +360,10 @@ function renderTachogramPlot(containerId, telemetry) {
     type: 'scatter',
     mode: 'lines+markers',
     name: 'Anomaly Score [0, 1]',
-    line: { color: '#f59e0b', width: 1.5 },
+    line: { color: '#d97706', width: 1.5 },
     marker: {
-      size: 6,
-      color: predictions.map(p => (p === 1 ? '#ff3366' : '#10b981'))
+      size: 5,
+      color: predictions.map(p => (p === 1 ? '#dc2626' : '#059669'))
     },
     xaxis: 'x2',
     yaxis: 'y2'
@@ -369,17 +371,17 @@ function renderTachogramPlot(containerId, telemetry) {
 
   const layout = {
     grid: { rows: 2, columns: 1, pattern: 'independent' },
-    paper_bgcolor: '#070b14',
-    plot_bgcolor: '#0e1626',
-    font: { color: '#f8fafc', family: 'Inter, sans-serif' },
-    height: 400,
-    margin: { l: 50, r: 30, t: 20, b: 40 },
-    xaxis: { gridcolor: '#1e293b', zerolinecolor: '#1e293b' },
-    yaxis: { title: 'RR (ms)', gridcolor: '#1e293b' },
-    xaxis2: { title: 'Time (s)', gridcolor: '#1e293b', zerolinecolor: '#1e293b' },
-    yaxis2: { title: 'Score', range: [-0.05, 1.05], gridcolor: '#1e293b' },
+    paper_bgcolor: '#ffffff',
+    plot_bgcolor: '#ffffff',
+    font: { color: '#0f172a', family: 'Inter, sans-serif' },
+    height: 380,
+    margin: { l: 50, r: 25, t: 20, b: 40 },
+    xaxis: { gridcolor: '#f1f5f9', zerolinecolor: '#e2e8f0' },
+    yaxis: { title: 'RR (ms)', gridcolor: '#f1f5f9' },
+    xaxis2: { title: 'Time (seconds)', gridcolor: '#f1f5f9', zerolinecolor: '#e2e8f0' },
+    yaxis2: { title: 'Score', range: [-0.05, 1.05], gridcolor: '#f1f5f9' },
     showlegend: true,
-    legend: { orientation: 'h', y: 1.08, x: 1, xanchor: 'right' },
+    legend: { orientation: 'h', y: 1.08, x: 1, xanchor: 'right', bgcolor: 'rgba(255, 255, 255, 0.95)' },
     shapes: [
       {
         type: 'line',
@@ -389,7 +391,7 @@ function renderTachogramPlot(containerId, telemetry) {
         x1: beatTimes[beatTimes.length - 1],
         y0: threshold || 0.5,
         y1: threshold || 0.5,
-        line: { color: '#ef4444', dash: 'dash', width: 1.5 }
+        line: { color: '#dc2626', dash: 'dash', width: 1.5 }
       }
     ]
   };

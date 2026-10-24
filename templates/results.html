@@ -175,14 +175,12 @@
 <script>
   // Render Plotly graphs from backend JSON payloads
   document.addEventListener('DOMContentLoaded', function() {
-    {% if ecg_chart_json %}
-      var ecgPlotData = {{ ecg_chart_json | safe }};
-      Plotly.newPlot('ecg_plot_container', ecgPlotData.data, ecgPlotData.layout, {responsive: true, displaylogo: false});
-    {% endif %}
-
-    {% if tachogram_chart_json %}
-      var tachoPlotData = {{ tachogram_chart_json | safe }};
-      Plotly.newPlot('tachogram_plot_container', tachoPlotData.data, tachoPlotData.layout, {responsive: true, displaylogo: false});
+    {% if telemetry_json %}
+      const telemetryData = {{ telemetry_json | safe }};
+      if (telemetryData && typeof renderECGPlot === 'function') {
+        renderECGPlot('ecg_plot_container', telemetryData);
+        renderTachogramPlot('tachogram_plot_container', telemetryData);
+      }
     {% endif %}
 
     // Table Filtering
