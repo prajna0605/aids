@@ -341,6 +341,9 @@ def generate_synthetic_ecg(
 
     ann_samples, ann_symbols, ann_labels, ann_descriptions = [], [], [], []
 
+    def _wave(t_center: float, amp: float, width: float) -> np.ndarray:
+        return amp * np.exp(-((time - t_center) ** 2) / (2 * (width**2)))
+
     for b_time, b_type in zip(beat_times, beat_types):
         r_idx = int(b_time * fs)
         if r_idx >= total_samples:
@@ -356,26 +359,17 @@ def generate_synthetic_ecg(
 
         if b_type == "N":
             # Normal P-QRS-T complex
-            p_center = b_time - 0.16
-            signal += 0.20 * np.exp(-((time - p_center) ** 2) / (2 * (0.025**2)))
-
-            q_center = b_time - 0.04
-            signal -= 0.18 * np.exp(-((time - q_center) ** 2) / (2 * (0.012**2)))
-
-            signal += 1.25 * np.exp(-((time - b_time) ** 2) / (2 * (0.015**2)))
-
-            s_center = b_time + 0.04
-            signal -= 0.35 * np.exp(-((time - s_center) ** 2) / (2 * (0.014**2)))
-
-            t_center = b_time + 0.22
-            signal += 0.35 * np.exp(-((time - t_center) ** 2) / (2 * (0.045**2)))
+            signal += _wave(b_time - 0.16, 0.20, 0.025)   # P wave (atrial depolarization)
+            signal += _wave(b_time - 0.04, -0.18, 0.012)  # Q wave (septal deflection)
+            signal += _wave(b_time, 1.25, 0.015)          # R peak (ventricular depolarization)
+            signal += _wave(b_time + 0.04, -0.35, 0.014)  # S wave
+            signal += _wave(b_time + 0.22, 0.35, 0.045)   # T wave (ventricular repolarization)
         else:
-            # Ventricular Ectopic Beat (PVC)
-            signal += 1.60 * np.exp(-((time - b_time) ** 2) / (2 * (0.042**2)))
-            s_center = b_time + 0.08
-            signal -= 1.10 * np.exp(-((time - s_center) ** 2) / (2 * (0.038**2)))
-            t_center = b_time + 0.26
-            signal -= 0.45 * np.exp(-((time - t_center) ** 2) / (2 * (0.065**2)))
+            # Ventricular Ectopic Beat (PVC): wide QRS spike, deep S wave, inverted T wave
+            signal += _wave(b_time, 1.60, 0.042)          # Wide abnormal R spike
+            signal += _wave(b_time + 0.08, -1.10, 0.038)  # Deep wide S deflection
+            signal += _wave(b_time + 0.26, -0.45, 0.065)  # Inverted T wave
+
 
     # Baseline wander (respiratory drift) & high-frequency interference
     baseline_wander = 0.25 * np.sin(2 * np.pi * 0.22 * time) + 0.12 * np.cos(2 * np.pi * 0.08 * time)

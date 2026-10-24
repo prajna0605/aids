@@ -175,3 +175,44 @@ def extract_ecg_features(
         feature_matrix.append(row)
 
     return np.array(feature_matrix, dtype=np.float64), all_feature_names
+
+
+def match_peaks_to_annotations(
+    detected_r_peaks: np.ndarray,
+    ann_samples: np.ndarray,
+    ann_labels: np.ndarray,
+    ann_symbols: np.ndarray,
+    fs: int = 360,
+    tolerance_ms: float = 75.0,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Associates each detected R-peak with its closest ground-truth annotation.
+
+    Returns:
+        matched_labels: 0 for normal, 1 for anomaly, -1 for unmatched
+        matched_symbols: annotation character symbol (e.g., 'N', 'V', 'A')
+        time_offsets_ms: timing difference between detection and annotation
+    """
+    n_peaks = len(detected_r_peaks)
+    matched_labels = np.zeros(n_peaks, dtype=int)
+    matched_symbols = np.array(["Unknown"] * n_peaks, dtype=object)
+    time_offsets_ms = np.zeros(n_peaks, dtype=np.float64)
+
+    if len(ann_samples) == 0:
+        return matched_labels, matched_symbols, time_offsets_ms
+
+    tolerance_samples = int((tolerance_ms / 1000.0) * fs)
+
+    for i, peak in enumerate(detected_r_peaks):
+        diffs = np.abs(ann_samples - peak)
+        min_idx = np.argmin(diffs)
+        if diffs[min_idx] <= tolerance_samples:
+            matched_labels[i] = ann_labels[min_idx]
+            matched_symbols[i] = ann_symbols[min_idx]
+            time_offsets_ms[i] = (peak - ann_samples[min_idx]) * (1000.0 / fs)
+        else:
+            matched_labels[i] = 0
+            matched_symbols[i] = "Unmatched"
+
+    return matched_labels, matched_symbols, time_offsets_ms
+
