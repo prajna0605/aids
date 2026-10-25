@@ -240,13 +240,8 @@ def run_evaluation(
     # Scale features and predict
     X_scaled = scaler.transform(features)
     raw_scores = model.decision_function(X_scaled)
-    inverted = -raw_scores
-    s_min, s_max = np.min(inverted), np.max(inverted)
-    if s_max - s_min > 1e-6:
-        anomaly_scores = (inverted - s_min) / (s_max - s_min)
-    else:
-        anomaly_scores = np.zeros(len(features))
-
+    center = -0.06
+    anomaly_scores = 1.0 / (1.0 + np.exp(np.clip(25.0 * (raw_scores - center), -25.0, 25.0)))
     y_pred = (anomaly_scores >= threshold).astype(int)
 
     base_metrics = compute_metrics(y_true, y_pred, anomaly_scores)

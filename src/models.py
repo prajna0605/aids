@@ -157,16 +157,9 @@ class ECGAnomalyDetector:
                 anomaly_scores = np.zeros(len(X))
         else:
             # For Isolation Forest, One-Class SVM, and LOF:
-            # decision_function() returns negative values for outliers, positive for inliers
             raw_scores = self.model.decision_function(X_scaled)
-            # Invert: lower raw score means more anomalous -> we want high anomaly_score
-            inverted = -raw_scores
-            # Min-Max sigmoid-like normalizer to [0, 1]
-            s_min, s_max = np.min(inverted), np.max(inverted)
-            if s_max - s_min > 1e-6:
-                anomaly_scores = (inverted - s_min) / (s_max - s_min)
-            else:
-                anomaly_scores = np.zeros(len(X))
+            center = -0.06
+            anomaly_scores = 1.0 / (1.0 + np.exp(np.clip(25.0 * (raw_scores - center), -25.0, 25.0)))
 
         # Binary predictions based on configurable user threshold
         binary_predictions = (anomaly_scores >= threshold).astype(int)
