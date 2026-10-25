@@ -613,7 +613,12 @@ def _load_continuous_timeseries(
     if len(numeric_cols) == 0:
         raise ValueError("Uploaded file does not contain any numeric ECG voltage columns.")
 
-    signal_col = selected_column if (selected_column and selected_column in df.columns) else numeric_cols[0]
+    # Filter out obvious time/index/timestamp columns when auto-selecting default ECG lead
+    candidate_cols = [c for c in numeric_cols if not any(t in str(c).lower() for t in ("time", "index", "timestamp", "sec"))]
+    if len(candidate_cols) == 0:
+        candidate_cols = numeric_cols
+
+    signal_col = selected_column if (selected_column and selected_column in df.columns) else candidate_cols[0]
 
     # Clean lead name if numeric or scientific notation
     lead_name = str(signal_col)
