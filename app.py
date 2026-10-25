@@ -4,7 +4,9 @@ Connects the HTML5/CSS3/Vanilla JS frontend with the biomedical signal processin
 and scikit-learn anomaly detection pipeline.
 """
 
+import io
 import os
+import uuid
 from pathlib import Path
 from flask import (
     Flask,
@@ -15,12 +17,18 @@ from flask import (
     flash,
     jsonify,
     Response,
+    send_file,
     send_from_directory,
 )
 
 from src.train import load_trained_model
 from src.evaluation import run_evaluation, generate_placement_report_md
 from src.pipeline import run_analysis_pipeline
+from src.report_generator import generate_clinical_pdf_report
+
+# In-memory recent analysis reports cache (FIFO, max 50 entries)
+REPORT_CACHE = {}
+
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -127,10 +135,69 @@ def analyze():
             model_bundle=get_model(),
             record_data=record_data,
         )
+
+        # Store in recent report cache for instant clinical PDF download
+        report_id = str(uuid.uuid4())[:8]
+        results["report_id"] = report_id
+        if len(REPORT_CACHE) >= 50:
+            REPORT_CACHE.pop(next(iter(REPORT_CACHE)))
+        REPORT_CACHE[report_id] = results
+
         return render_template("results.html", **results)
     except Exception as e:
         flash(f"Error during analysis: {str(e)}", "error")
         return redirect(url_for("index"))
+
+
+@app.route("/report/<report_id>/pdf")
+@app.route("/api/export_clinical_pdf")
+def download_clinical_pdf(report_id="benchmark_119"):
+    """
+    Generates and streams a 1-page clinical diagnostic PDF report.
+    Supports on-demand generation for benchmark_119 or any recently analyzed report.
+    """
+    results_data = REPORT_CACHE.get(report_id)
+
+    # If benchmark_119 is requested and not in cache, generate it from local benchmark data
+    if not results_data and report_id == "benchmark_119":
+        try:
+            benchmark_path = Path("data/record_119_arrhythmia.csv")
+            if benchmark_path.exists():
+                with open(benchmark_path, "rb") as bf:
+                    raw_bytes = bf.read()
+                results_data = run_analysis_pipeline(
+                    file_bytes=raw_bytes,
+                    filename="PhysioNet MIT-BIH Record 119",
+                    fs=360,
+                    duration_allowance=60.0,
+                    model_bundle=get_model(),
+                )
+                results_data["report_id"] = "benchmark_119"
+                REPORT_CACHE["benchmark_119"] = results_data
+        except Exception as e:
+            app.logger.error(f"Error computing benchmark 119 for PDF: {e}")
+
+    if not results_data:
+        flash("Report session expired or not found. Please re-run analysis.", "warning")
+        return redirect(url_for("index"))
+
+    try:
+        pdf_bytes = generate_clinical_pdf_report(results_data)
+        record_name = str(results_data.get("record_name", "ECG_Record")).replace(" ", "_")
+        clean_name = "".join(c for c in record_name if c.isalnum() or c in ("_", "-"))
+        filename = f"Clinical_ECG_Report_{clean_name}.pdf"
+
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        app.logger.error(f"Error generating clinical PDF report: {e}")
+        flash(f"Failed to generate clinical PDF report: {str(e)}", "error")
+        return redirect(url_for("index"))
+
 
 
 @app.route("/evaluation")

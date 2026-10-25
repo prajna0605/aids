@@ -19,9 +19,12 @@
     </p>
   </div>
 
-  <div>
-    <a href="{{ url_for('export_report') }}" class="btn btn-primary" id="btn_download_report">
-      <i class="fa-solid fa-file-arrow-down"></i> Export Report (.md)
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <a href="{{ url_for('download_clinical_pdf', report_id='benchmark_119') }}" class="btn btn-primary" id="btn_download_clinical_pdf_eval" style="background: linear-gradient(135deg, #e11d48, #be123c); border-color: #be123c; color: #fff;">
+      <i class="fa-solid fa-file-pdf"></i> Download Clinical PDF Report
+    </a>
+    <a href="{{ url_for('export_report') }}" class="btn btn-secondary" id="btn_download_report">
+      <i class="fa-solid fa-file-arrow-down"></i> Export Portfolio (.md)
     </a>
   </div>
 </div>

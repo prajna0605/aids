@@ -135,3 +135,13 @@ def test_analyze_synthetic_mode(client):
     assert b"SYNTH" in response.data or b"Synthetic" in response.data
 
 
+def test_download_clinical_pdf(client):
+    """Verifies that the clinical PDF report is generated and served with application/pdf mimetype."""
+    response = client.get("/report/benchmark_119/pdf")
+    assert response.status_code == 200
+    assert response.headers["Content-Type"] == "application/pdf"
+    assert b"%PDF" in response.data[:10]
+    assert len(response.data) > 10_000
+
+
+

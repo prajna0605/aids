@@ -22,12 +22,17 @@
     </p>
   </div>
 
-  <div style="display: flex; gap: 8px;">
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    {% if report_id %}
+    <a href="{{ url_for('download_clinical_pdf', report_id=report_id) }}" class="btn btn-primary" id="btn_download_clinical_pdf" style="background: linear-gradient(135deg, #e11d48, #be123c); border-color: #be123c; color: #fff;">
+      <i class="fa-solid fa-file-pdf"></i> Download Clinical PDF Report
+    </a>
+    {% endif %}
     <a href="{{ url_for('evaluation') }}" class="btn btn-secondary" id="btn_view_eval">
       <i class="fa-solid fa-square-poll-vertical"></i> Benchmarks
     </a>
-    <a href="{{ url_for('index') }}" class="btn btn-primary" id="btn_new_analysis">
-      <i class="fa-solid fa-rotate-right"></i> Analyze Another File
+    <a href="{{ url_for('index') }}" class="btn btn-secondary" id="btn_new_analysis">
+      <i class="fa-solid fa-rotate-right"></i> New Analysis
     </a>
   </div>
 </div>
