@@ -207,9 +207,11 @@ def analyze():
         # Construct beat inspection records
         time_axis = np.arange(len(cleaned_signal)) / fs
         beats_list = []
+        ann_symbols = record_data.get("ann_symbols")
         for i in range(total_beats):
             p = valid_peaks[i]
             is_ano = int(predictions[i]) == 1
+            ref_sym = ann_symbols[i] if (ann_symbols is not None and i < len(ann_symbols)) else ("V" if is_ano else "N")
             beats_list.append({
                 "beat_num": i + 1,
                 "time_s": round(float(time_axis[p]), 3),
@@ -219,6 +221,7 @@ def analyze():
                 "r_amp": round(float(features[i, 3]), 2) if features.shape[1] > 3 else 0,
                 "qrs_energy": round(float(features[i, 7]), 2) if features.shape[1] > 7 else 0,
                 "symbol": "V" if is_ano else "N",
+                "reference_symbol": ref_sym,
             })
 
         # 7. Package Telemetry for Plotly.js (Decimate signal if ultra-long for smooth 60fps rendering)

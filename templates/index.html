@@ -29,7 +29,7 @@
       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
         Supports continuous multi-lead patient recordings or AAMI benchmark datasets (e.g. <code>data/mitbih_test.csv</code>)
       </p>
-      <button type="button" class="btn btn-secondary" onclick="document.getElementById('custom_file_input').click();">
+      <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); document.getElementById('custom_file_input').click();">
         <i class="fa-solid fa-folder-open"></i> Browse ECG File
       </button>
     </div>
