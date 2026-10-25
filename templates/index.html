@@ -1,201 +1,92 @@
 {% extends "base.html" %}
 
-{% block title %}ECG Insight — Cardiac Arrhythmia Detection{% endblock %}
+{% block title %}ECG Insight — Patient ECG Upload & Analysis{% endblock %}
 
 {% block content %}
 <!-- Minimal Hero Section -->
 <section class="hero" id="hero_section">
   <div class="hero-pill">
-    <i class="fa-solid fa-heart-pulse"></i> Machine Learning ECG Analysis
+    <i class="fa-solid fa-heart-pulse"></i> Machine Learning ECG Telemetry
   </div>
-  <h1 class="hero-title">ECG Arrhythmia Detection</h1>
+  <h1 class="hero-title">Upload & Analyze ECG</h1>
   <p class="hero-subtitle">
-    Upload or select an ECG recording to detect irregular heartbeats and rhythm anomalies in real time.
+    Upload an ECG recording (CSV or TXT) to filter noise, detect individual heartbeats, and identify arrhythmias with machine learning.
   </p>
 </section>
 
-<!-- Analysis Control Panel -->
+<!-- Direct Upload Section -->
 <section class="glass-panel" id="analysis_panel">
   <form id="analysis_form" action="{{ url_for('analyze') }}" method="POST" enctype="multipart/form-data">
-    <input type="hidden" name="dataset_mode" id="dataset_mode" value="preset">
-    <input type="hidden" name="preset_record" id="selected_preset_record" value="106">
+    <input type="hidden" name="dataset_mode" id="dataset_mode" value="upload">
 
-    <!-- Source Selection Segmented Tabs -->
-    <div class="tab-nav" role="tablist">
-      <button type="button" class="tab-btn active" data-target="tab_preset" data-mode="preset" id="tab_btn_preset">
-        <i class="fa-solid fa-database"></i> Sample Records (MIT-BIH)
+    <!-- Clean Drag & Drop Upload Zone -->
+    <div class="drop-zone" id="dropzone" style="cursor: pointer;">
+      <input type="file" id="custom_file_input" name="custom_file" accept=".csv,.txt,.tsv" style="display: none;">
+      <div class="drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+      <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">
+        Click to select or drag and drop an ECG file
+      </h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+        Supports continuous multi-lead patient recordings or AAMI benchmark datasets (e.g. <code>data/mitbih_test.csv</code>)
+      </p>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('custom_file_input').click();">
+        <i class="fa-solid fa-folder-open"></i> Browse ECG File
       </button>
-      <button type="button" class="tab-btn" data-target="tab_upload" data-mode="upload" id="tab_btn_upload">
-        <i class="fa-solid fa-cloud-arrow-up"></i> Upload ECG File (CSV)
-      </button>
-      <button type="button" class="tab-btn" data-target="tab_synthetic" data-mode="synthetic" id="tab_btn_synthetic">
-        <i class="fa-solid fa-wand-magic-sparkles"></i> Synthetic Simulation
-      </button>
     </div>
 
-    <!-- TAB 1: MIT-BIH Presets -->
-    <div class="tab-pane active" id="tab_preset">
-      <div class="records-grid" id="records_grid">
-        <!-- Record 100 -->
-        <div class="record-card" data-record="100" id="card_rec_100">
-          <div class="record-header">
-            <span class="record-badge normal"><i class="fa-solid fa-check"></i> Normal Baseline</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim);">Lead MLII</span>
-          </div>
-          <div class="record-name">Record 100</div>
-          <div class="record-desc">Normal sinus rhythm with very few isolated ectopic beats. Clean baseline recording.</div>
+    <!-- Selected File Indicator -->
+    <div id="file_info_badge" style="display: none; background: var(--accent-primary-light); border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 12px 16px; margin-top: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <i class="fa-solid fa-file-waveform" style="color: var(--accent-primary); margin-right: 8px;"></i>
+          <strong id="selected_file_name" style="color: var(--text-main); font-size: 0.95rem;">filename.csv</strong>
+          <span id="selected_file_size" style="color: var(--text-muted); font-size: 0.82rem; margin-left: 8px;">0.00 MB</span>
         </div>
-
-        <!-- Record 106 -->
-        <div class="record-card selected" data-record="106" id="card_rec_106">
-          <div class="record-header">
-            <span class="record-badge arrhythmia"><i class="fa-solid fa-triangle-exclamation"></i> Frequent PVCs</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim);">Lead MLII</span>
-          </div>
-          <div class="record-name">Record 106</div>
-          <div class="record-desc">Frequent Premature Ventricular Contractions (PVCs) in isolated and couplet patterns.</div>
-        </div>
-
-        <!-- Record 119 -->
-        <div class="record-card" data-record="119" id="card_rec_119">
-          <div class="record-header">
-            <span class="record-badge arrhythmia"><i class="fa-solid fa-triangle-exclamation"></i> Bigeminy</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim);">Lead MLII</span>
-          </div>
-          <div class="record-name">Record 119</div>
-          <div class="record-desc">Alternating pattern of normal beats and PVCs (bigeminal rhythm).</div>
-        </div>
-
-        <!-- Record 200 -->
-        <div class="record-card" data-record="200" id="card_rec_200">
-          <div class="record-header">
-            <span class="record-badge arrhythmia"><i class="fa-solid fa-triangle-exclamation"></i> Complex Ectopy</span>
-            <span style="font-size: 0.75rem; color: var(--text-dim);">Lead MLII</span>
-          </div>
-          <div class="record-name">Record 200</div>
-          <div class="record-desc">Rich variety of ventricular ectopic beats, couplets, and short bursts.</div>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="preset_duration">Duration: <span id="preset_duration_val" class="slider-value">60s</span></label>
-          <div class="slider-container">
-            <input type="range" class="slider" id="preset_duration" name="preset_duration" min="10" max="180" value="60" step="10" data-unit="s">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="preset_lead">Lead / Channel:</label>
-          <select class="form-select" id="preset_lead" name="preset_lead">
-            <option value="0" selected>Channel 0 (Lead MLII)</option>
-            <option value="1">Channel 1 (Lead V1 / V5)</option>
-          </select>
-        </div>
+        <span style="font-size: 0.78rem; font-weight: 600; color: var(--accent-emerald);">
+          <i class="fa-solid fa-circle-check"></i> File Ready
+        </span>
       </div>
     </div>
 
-    <!-- TAB 2: Custom File Upload -->
-    <div class="tab-pane" id="tab_upload">
-      <!-- Clean Drag & Drop Zone -->
-      <div class="drop-zone" id="dropzone">
-        <input type="file" id="custom_file_input" name="custom_file" accept=".csv,.txt,.tsv" style="display: none;">
-        <div class="drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-        <h4 style="font-size: 1.05rem; margin-bottom: 4px; font-weight: 600;">Drag and drop your ECG CSV file here</h4>
-        <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 12px;">
-          Supports continuous ECG recordings or AAMI pre-segmented heartbeat datasets (e.g. mitbih_test.csv)
-        </p>
-        <button type="button" class="btn btn-secondary" onclick="document.getElementById('custom_file_input').click();">
-          Browse File
-        </button>
+    <!-- Upload Configuration Controls -->
+    <div class="form-row" style="margin-top: 1.5rem;">
+      <div class="form-group">
+        <label class="form-label" for="custom_fs">Sampling Frequency (Hz):</label>
+        <input type="number" class="form-input" id="custom_fs" name="custom_fs" value="360" min="50" max="10000" step="10">
+        <div class="form-caption">e.g. 360 Hz (PhysioNet standard), 250 Hz, or 500 Hz.</div>
       </div>
 
-      <!-- Selected File Notification -->
-      <div id="file_info_badge" style="display: none; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 10px 14px; margin-top: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <i class="fa-solid fa-file-waveform" style="color: var(--accent-primary); margin-right: 6px;"></i>
-            <strong id="selected_file_name" style="color: var(--text-main);">filename.csv</strong>
-            <span id="selected_file_size" style="color: var(--text-muted); font-size: 0.8rem; margin-left: 8px;">0.00 MB</span>
-          </div>
-          <span style="font-size: 0.78rem; font-weight: 600; color: var(--accent-emerald);">
-            File Ready
-          </span>
+      <div class="form-group">
+        <label class="form-label" for="window_duration">Analysis Time Window: <span id="window_duration_val" class="slider-value">60s</span></label>
+        <div class="slider-container">
+          <input type="range" class="slider" id="window_duration" name="window_duration" min="10" max="300" value="60" step="10" data-unit="s">
         </div>
-      </div>
-
-      <div class="form-row" style="margin-top: 1.25rem;">
-        <div class="form-group">
-          <label class="form-label" for="custom_fs">Sampling Frequency (Hz):</label>
-          <input type="number" class="form-input" id="custom_fs" name="custom_fs" value="360" min="50" max="10000" step="10">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="window_duration">Time Window (seconds): <span id="window_duration_val" class="slider-value">60s</span></label>
-          <div class="slider-container">
-            <input type="range" class="slider" id="window_duration" name="window_duration" min="10" max="300" value="60" step="10" data-unit="s">
-          </div>
-          <input type="hidden" name="allowance_mode" value="window">
-          <input type="hidden" name="window_offset" id="window_offset" value="0.0">
-        </div>
+        <div class="form-caption">Duration of signal to process from start offset.</div>
+        <input type="hidden" name="allowance_mode" value="window">
+        <input type="hidden" name="window_offset" id="window_offset" value="0.0">
       </div>
     </div>
 
-    <!-- TAB 3: Synthetic Simulation -->
-    <div class="tab-pane" id="tab_synthetic">
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="synth_hr">Heart Rate: <span id="synth_hr_val" class="slider-value">75 BPM</span></label>
-          <div class="slider-container">
-            <input type="range" class="slider" id="synth_hr" name="synth_hr" min="50" max="130" value="75" step="1" data-unit=" BPM">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="synth_duration">Duration: <span id="synth_duration_val" class="slider-value">45s</span></label>
-          <div class="slider-container">
-            <input type="range" class="slider" id="synth_duration" name="synth_duration" min="15" max="120" value="45" step="5" data-unit="s">
-          </div>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="synth_ano_prob">Arrhythmia (PVC) Probability: <span id="synth_ano_prob_val" class="slider-value">18%</span></label>
-          <div class="slider-container">
-            <input type="range" class="slider" id="synth_ano_prob" name="synth_ano_prob" min="0" max="40" value="18" step="2" data-unit="%">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="synth_noise">Noise Level: <span id="synth_noise_val" class="slider-value">4%</span></label>
-          <div class="slider-container">
-            <input type="range" class="slider" id="synth_noise" name="synth_noise" min="0" max="15" value="4" step="1" data-unit="%">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Advanced Filter & Alert Settings (Clean Collapsible) -->
-    <details style="margin: 1.5rem 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem 1.25rem; background: var(--bg-surface);">
-      <summary style="font-weight: 600; font-size: 0.9rem; color: var(--text-muted); cursor: pointer;">
-        <i class="fa-solid fa-sliders" style="margin-right: 6px;"></i> Optional: Alert Threshold & Filter Settings
+    <!-- Optional Tuning Accordion -->
+    <details style="margin: 1.25rem 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem 1.25rem; background: var(--bg-surface);">
+      <summary style="font-weight: 600; font-size: 0.88rem; color: var(--text-muted); cursor: pointer;">
+        <i class="fa-solid fa-sliders" style="margin-right: 6px;"></i> Optional: Filter Range & Alert Sensitivity
       </summary>
 
       <div style="margin-top: 1rem;">
         <div class="form-row" style="margin-bottom: 0.75rem;">
           <div class="form-group">
-            <label class="form-label" for="decision_threshold">Anomaly Alert Sensitivity: <span id="decision_threshold_val" class="slider-value">50%</span></label>
+            <label class="form-label" for="decision_threshold">Anomaly Alert Threshold: <span id="decision_threshold_val" class="slider-value">50%</span></label>
             <div class="slider-container">
               <input type="range" class="slider" id="decision_threshold" name="decision_threshold" min="10" max="95" value="50" step="5" data-unit="%">
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="filter_bandpass">Bandpass Range:</label>
+            <label class="form-label" for="filter_bandpass">Butterworth Bandpass Filter:</label>
             <select class="form-select" id="filter_bandpass" name="filter_bandpass">
-              <option value="0.5-40" selected>0.5 Hz – 40 Hz (Standard Filter)</option>
-              <option value="0.1-50">0.1 Hz – 50 Hz (Wideband)</option>
+              <option value="0.5-40" selected>0.5 Hz – 40 Hz (Standard Clinical Band)</option>
+              <option value="0.1-50">0.1 Hz – 50 Hz (Extended Wideband)</option>
               <option value="1.0-30">1.0 Hz – 30 Hz (Heavy Filter)</option>
             </select>
           </div>
@@ -203,51 +94,35 @@
 
         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
           <input type="checkbox" name="apply_notch" value="true" checked>
-          Apply 50 Hz electrical notch filter
+          Apply 50 Hz AC powerline notch filter
         </label>
       </div>
     </details>
 
-    <!-- Run Analysis CTA Button -->
-    <div style="text-align: center; margin-top: 1.5rem;">
+    <!-- Run Analysis Button -->
+    <div style="text-align: center; margin-top: 1.75rem;">
       <button type="submit" class="btn btn-primary btn-lg" id="btn_run_analysis">
-        <i class="fa-solid fa-play"></i> Run ECG Analysis
+        <i class="fa-solid fa-play"></i> Analyze ECG File
       </button>
     </div>
   </form>
 </section>
 
-<!-- Simple 4-Step Process Section -->
-<section style="margin-top: 3rem;">
-  <div style="text-align: center; margin-bottom: 1.5rem;">
-    <h2 style="font-size: 1.4rem; font-weight: 700; color: var(--text-main);">How It Works</h2>
-    <p style="font-size: 0.9rem; color: var(--text-muted);">4 simple automated steps from raw recording to anomaly detection</p>
-  </div>
-
-  <div class="kpi-ribbon" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
-    <div class="kpi-card blue">
-      <div style="color: var(--accent-primary); font-size: 1.25rem; margin-bottom: 0.5rem;"><i class="fa-solid fa-filter"></i></div>
-      <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">1. Filter Noise</h3>
-      <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">Zero-phase bandpass filter removes breathing baseline drift and 50Hz electrical hum.</p>
-    </div>
-
-    <div class="kpi-card emerald">
-      <div style="color: var(--accent-emerald); font-size: 1.25rem; margin-bottom: 0.5rem;"><i class="fa-solid fa-heart-pulse"></i></div>
-      <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">2. Find R-Peaks</h3>
-      <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">Pan-Tompkins algorithm pinpoints each heartbeat spike with physiological timing locks.</p>
-    </div>
-
-    <div class="kpi-card amber">
-      <div style="color: var(--accent-amber); font-size: 1.25rem; margin-bottom: 0.5rem;"><i class="fa-solid fa-chart-line"></i></div>
-      <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">3. Extract Features</h3>
-      <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">Measures beat-to-beat RR timing intervals, QRS width, voltage amplitude, and waveform energy.</p>
-    </div>
-
-    <div class="kpi-card crimson">
-      <div style="color: var(--accent-crimson); font-size: 1.25rem; margin-bottom: 0.5rem;"><i class="fa-solid fa-triangle-exclamation"></i></div>
-      <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">4. Flag Anomalies</h3>
-      <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">Machine learning model compares beats and highlights premature or irregular contractions.</p>
-    </div>
+<!-- Quick Verification Guide Card -->
+<section style="margin-top: 2rem;">
+  <div class="glass-panel" style="background: #ffffff; border-left: 4px solid var(--accent-primary);">
+    <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.4rem; display: flex; align-items: center; gap: 8px;">
+      <i class="fa-solid fa-vial-circle-check" style="color: var(--accent-primary);"></i>
+      How to Verify the Model
+    </h3>
+    <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 0.5rem;">
+      To verify the system on real clinical data without any simulation:
+    </p>
+    <ol style="padding-left: 20px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+      <li>Click <strong>Browse ECG File</strong> and select <code>data/mitbih_test.csv</code> from this repository (contains 4,500 real clinical beats with AAMI labels).</li>
+      <li>Click <strong>Analyze ECG File</strong>. The system will reconstruct the real continuous rhythm strip, locate R-peaks, and flag anomalous beats.</li>
+      <li>Check the <strong>Benchmarks</strong> page to view the quantitative validation matrix (96.9% accuracy, 93.8% recall, 97.8% specificity).</li>
+    </ol>
   </div>
 </section>
 {% endblock %}

@@ -31,7 +31,7 @@ def test_home_page(client):
     response = client.get("/")
     assert response.status_code == 200
     assert b"ECG Insight AI" in response.data
-    assert b"PhysioNet MIT-BIH Database" in response.data
+    assert b"Upload" in response.data
 
 
 def test_health_api(client):
@@ -66,56 +66,39 @@ def test_export_report_endpoint(client):
     assert response.mimetype == "text/markdown"
 
 
-def test_analyze_synthetic(client):
-    """Verifies end-to-end inference on synthetic ECG simulation."""
-    payload = {
-        "dataset_mode": "synthetic",
-        "synth_hr": "75",
-        "synth_duration": "20",
-        "synth_ano_prob": "15",
-        "synth_noise": "3",
+def test_analyze_uploaded_mitbih_file(client):
+    """Verifies end-to-end inference on uploaded mitbih_test.csv slice."""
+    with open("data/mitbih_test.csv", "rb") as f:
+        file_bytes = f.read(100 * 1024)  # First 100 KB
+    data = {
+        "custom_file": (io.BytesIO(file_bytes), "mitbih_test.csv"),
+        "custom_fs": "360",
+        "window_duration": "20",
         "decision_threshold": "50",
-        "filter_bandpass": "0.5-40",
-        "apply_notch": "true",
     }
-    response = client.post("/analyze", data=payload)
+    response = client.post("/analyze", data=data, content_type="multipart/form-data")
     assert response.status_code == 200
     assert b"Telemetry Analysis" in response.data
     assert b"Analyzed Heartbeats" in response.data
 
 
-def test_analyze_preset_record(client):
-    """Verifies end-to-end inference on pre-cached MIT-BIH Record 100."""
-    payload = {
-        "dataset_mode": "preset",
-        "preset_record": "100",
-        "preset_duration": "20",
-        "preset_lead": "0",
-        "decision_threshold": "50",
-        "filter_bandpass": "0.5-40",
-        "apply_notch": "true",
-    }
-    response = client.post("/analyze", data=payload)
+def test_analyze_no_file_redirect(client):
+    """Verifies that submitting without a file redirects back to home with an alert."""
+    response = client.post("/analyze", data={}, follow_redirects=True)
     assert response.status_code == 200
-    assert b"Record 100" in response.data
+    assert b"Please select an ECG file" in response.data or b"No file" in response.data
 
 
 def test_analyze_custom_upload_allowance(client):
-    """Verifies custom file upload within the 1,024 MB allowance."""
-    from src.data_loader import generate_synthetic_ecg
-    synth = generate_synthetic_ecg(duration_sec=15, fs=360, anomaly_prob=0.15)
-    df = pd.DataFrame({"Lead_MLII": synth["signal"]})
-    csv_bytes = io.BytesIO()
-    df.to_csv(csv_bytes, index=False)
-    csv_bytes.seek(0)
+    """Verifies custom file upload within the 1,024 MB allowance using real ECG data."""
+    with open("data/mitbih_test.csv", "rb") as f:
+        file_bytes = f.read(50 * 1024)
+    csv_bytes = io.BytesIO(file_bytes)
 
     data = {
-        "dataset_mode": "upload",
         "custom_file": (csv_bytes, "patient_upload.csv"),
         "custom_fs": "360",
-        "allowance_mode": "window",
         "window_duration": "10",
-        "window_offset": "0",
         "decision_threshold": "50",
     }
 

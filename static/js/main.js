@@ -3,61 +3,12 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  initTabs();
-  initPresetRecordCards();
   initSliders();
   initFileUpload();
   initFormSubmission();
   initTableFilters();
 });
 
-/**
- * Tab Switching System
- */
-function initTabs() {
-  const tabBtns = document.querySelectorAll('.tab-btn');
-  const tabPanes = document.querySelectorAll('.tab-pane');
-
-  tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const targetId = btn.getAttribute('data-target');
-
-      tabBtns.forEach(b => b.classList.remove('active'));
-      tabPanes.forEach(p => p.classList.remove('active'));
-
-      btn.classList.add('active');
-      const targetPane = document.getElementById(targetId);
-      if (targetPane) {
-        targetPane.classList.add('active');
-      }
-
-      // Update hidden input for dataset mode
-      const modeInput = document.getElementById('dataset_mode');
-      if (modeInput) {
-        modeInput.value = btn.getAttribute('data-mode') || 'preset';
-      }
-    });
-  });
-}
-
-/**
- * Preset Record Cards Selection
- */
-function initPresetRecordCards() {
-  const cards = document.querySelectorAll('.record-card');
-  const hiddenInput = document.getElementById('selected_preset_record');
-
-  cards.forEach(card => {
-    card.addEventListener('click', () => {
-      cards.forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      const recordId = card.getAttribute('data-record');
-      if (hiddenInput) {
-        hiddenInput.value = recordId;
-      }
-    });
-  });
-}
 
 /**
  * Dynamic Sliders Live Labels

@@ -62,8 +62,11 @@ def preprocess_ecg_signal(
     Standard preprocessing pipeline:
     Raw ECG -> Bandpass Filter -> 50Hz Notch Filter -> Normalized Signal.
     """
+    # 0. Sanitize input signal
+    clean_raw = np.nan_to_num(raw_signal, nan=0.0)
+
     # 1. Bandpass filter
-    bandpass_sig = butter_bandpass_filter(raw_signal, lowcut=lowcut, highcut=highcut, fs=fs)
+    bandpass_sig = butter_bandpass_filter(clean_raw, lowcut=lowcut, highcut=highcut, fs=fs)
 
     # 2. Notch filter for AC grid interference
     notch_sig = notch_filter(bandpass_sig, notch_freq=notch_freq, fs=fs) if (apply_notch and notch_freq < fs / 2) else bandpass_sig.copy()

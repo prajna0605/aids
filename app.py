@@ -25,9 +25,6 @@ from flask import (
 )
 
 from src.data_loader import (
-    PRESET_RECORDS,
-    load_mitdb_record,
-    generate_synthetic_ecg,
     load_custom_ecg_csv,
     get_custom_file_preview,
 )
@@ -75,7 +72,7 @@ def favicon():
 @app.route("/")
 def index():
     """Renders the interactive analysis launchpad."""
-    return render_template("index.html", preset_records=PRESET_RECORDS)
+    return render_template("index.html")
 
 
 @app.route("/analyze", methods=["POST"])
@@ -102,84 +99,41 @@ def analyze():
         record_data = None
         lead_name = "Lead MLII"
 
-        # 1. Dataset Acquisition
-        if dataset_mode == "preset":
-            rec_id = request.form.get("preset_record", "106")
-            duration_sec = int(request.form.get("preset_duration", 60))
-            channel = int(request.form.get("preset_lead", 0))
-
-            try:
-                record_data = load_mitdb_record(
-                    record_name=rec_id,
-                    channel=channel,
-                    max_seconds=duration_sec,
-                )
-            except Exception as e:
-                flash(f"PhysioNet fetch notice: {e}. Running realistic simulation of Record {rec_id}.", "warning")
-                record_data = generate_synthetic_ecg(duration_sec=duration_sec, anomaly_prob=0.20)
-
-            record_data["record_name"] = f"Record {rec_id}"
-            lead_name = record_data.get("lead_name", f"Channel {channel}")
-
-        elif dataset_mode == "synthetic":
-            synth_hr = float(request.form.get("synth_hr", 75))
-            synth_dur = int(request.form.get("synth_duration", 45))
-            synth_ano_prob = float(request.form.get("synth_ano_prob", 18)) / 100.0
-            synth_noise = float(request.form.get("synth_noise", 4)) / 100.0
-
-            record_data = generate_synthetic_ecg(
-                duration_sec=synth_dur,
-                heart_rate=synth_hr,
-                noise_level=synth_noise,
-                anomaly_prob=synth_ano_prob,
-            )
-            lead_name = "Synthetic Lead II"
-
-        elif dataset_mode == "upload":
-            if "custom_file" not in request.files:
-                flash("Please select an ECG file to upload.", "error")
-                return redirect(url_for("index"))
-
-            file = request.files["custom_file"]
-            if file.filename == "":
-                flash("No file was selected for upload.", "error")
-                return redirect(url_for("index"))
-
-            user_fs = int(request.form.get("custom_fs", 360))
-            allowance_mode = request.form.get("allowance_mode", "window")
-
-            if allowance_mode == "window":
-                duration_allowance = float(request.form.get("window_duration", 60))
-                start_offset = float(request.form.get("window_offset", 0.0))
-            else:
-                duration_allowance = None
-                start_offset = 0.0
-
-            file_bytes = file.read()
-            if len(file_bytes) == 0:
-                flash("The uploaded file is empty.", "error")
-                return redirect(url_for("index"))
-
-            selected_col = request.form.get("selected_column")
-            record_data = load_custom_ecg_csv(
-                file_bytes=file_bytes,
-                fs=user_fs,
-                filename=file.filename,
-                selected_column=selected_col,
-                start_second=start_offset,
-                duration_allowance_sec=duration_allowance,
-                max_samples_allowance=1_000_000,
-            )
-            lead_name = record_data.get("lead_name", "Uploaded Lead")
-
-            # Clean lead name if it contains scientific notation or raw floats
-            lead_name_str = str(lead_name)
-            if "e+" in lead_name_str or "e-" in lead_name_str or lead_name_str.replace(".", "", 1).isdigit():
-                lead_name = "Uploaded ECG Lead"
-
-        else:
-            flash("Invalid dataset mode requested.", "error")
+        # 1. ECG File Upload Acquisition
+        if "custom_file" not in request.files:
+            flash("Please select an ECG file to upload (CSV or TXT).", "error")
             return redirect(url_for("index"))
+
+        file = request.files["custom_file"]
+        if not file or file.filename == "":
+            flash("No file was selected for upload.", "error")
+            return redirect(url_for("index"))
+
+        user_fs = int(request.form.get("custom_fs", 360))
+        duration_allowance = float(request.form.get("window_duration", 60))
+        start_offset = float(request.form.get("window_offset", 0.0))
+
+        file_bytes = file.read()
+        if len(file_bytes) == 0:
+            flash("The uploaded file is empty.", "error")
+            return redirect(url_for("index"))
+
+        selected_col = request.form.get("selected_column")
+        record_data = load_custom_ecg_csv(
+            file_bytes=file_bytes,
+            fs=user_fs,
+            filename=file.filename,
+            selected_column=selected_col,
+            start_second=start_offset,
+            duration_allowance_sec=duration_allowance,
+            max_samples_allowance=1_000_000,
+        )
+        lead_name = record_data.get("lead_name", "Uploaded Lead")
+
+        # Clean lead name if it contains scientific notation or raw floats
+        lead_name_str = str(lead_name)
+        if "e+" in lead_name_str or "e-" in lead_name_str or lead_name_str.replace(".", "", 1).isdigit():
+            lead_name = "Uploaded ECG Lead"
 
         # 2. Digital Signal Processing (DSP)
         raw_signal = record_data["signal"]
@@ -198,8 +152,12 @@ def analyze():
         )
         cleaned_signal = prep["cleaned"]
 
-        # 3. Pan-Tompkins QRS Detection
-        r_peaks = pan_tompkins_r_peak_detection(cleaned_signal, fs=fs)
+        # 3. Peak Detection
+        # Use annotated peak positions if file is an AAMI beat matrix, otherwise use Pan-Tompkins algorithm
+        if record_data.get("ann_samples") is not None and len(record_data["ann_samples"]) > 0:
+            r_peaks = np.array(record_data["ann_samples"], dtype=int)
+        else:
+            r_peaks = pan_tompkins_r_peak_detection(cleaned_signal, fs=fs)
 
         if len(r_peaks) == 0:
             flash("No distinct QRS complexes were detected in the signal.", "warning")

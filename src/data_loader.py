@@ -500,21 +500,25 @@ def _reconstruct_rhythm_from_beats(
         if (duration_allowance_sec and duration_allowance_sec > 0)
         else (len(df) * beat_stride)
     )
-    beats_needed = min(len(df), max(1, target_samples // beat_stride))
+    # 1. Clean incomplete/truncated rows and extract beat voltage matrix
+    df_clean = df.dropna(subset=df.columns[:min(187, df.shape[1])])
+    if len(df_clean) == 0:
+        df_clean = df.fillna(0.0)
 
-    start_beat = min(len(df) - 1, int(start_second * fs / beat_stride))
-    end_beat = min(len(df), start_beat + beats_needed)
+    beats_needed = min(len(df_clean), max(1, target_samples // beat_stride))
+    start_beat = min(max(0, len(df_clean) - 1), int(start_second * fs / beat_stride))
+    end_beat = min(len(df_clean), start_beat + beats_needed)
 
-    # 1. Extract beat voltage matrix & ground-truth labels
-    beats_data = df.iloc[start_beat:end_beat, :187].to_numpy(dtype=np.float64)
+    beats_data = df_clean.iloc[start_beat:end_beat, :187].to_numpy(dtype=np.float64)
+    beats_data = np.nan_to_num(beats_data, nan=0.0)
     n_beats = len(beats_data)
     has_labels = (num_cols == 188)
-    raw_labels = df.iloc[start_beat:end_beat, 187].to_numpy(dtype=np.float64) if has_labels else None
+    raw_labels = df_clean.iloc[start_beat:end_beat, 187].to_numpy(dtype=np.float64) if has_labels else None
 
     # 2. High-performance vectorized waveform assembly
     # Append flat resting baseline (equal to last beat sample) to each beat, then flatten
     padding = np.repeat(beats_data[:, -1:], spacing, axis=1)
-    signal_slice = np.hstack([beats_data, padding]).ravel()
+    signal_slice = np.nan_to_num(np.hstack([beats_data, padding]).ravel(), nan=0.0)
 
     # 3. Vectorized R-peak and annotation calculation
     r_peaks_relative = np.argmax(beats_data, axis=1)
