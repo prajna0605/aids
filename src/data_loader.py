@@ -429,12 +429,18 @@ def _read_csv_smart(buf: io.BytesIO, nrows: Optional[int] = None) -> Tuple[pd.Da
         df = pd.read_csv(buf, sep=None, header=header_arg, nrows=nrows, engine="python")
 
     num_cols = df.shape[1]
-    is_heartbeat_matrix = (num_cols in (187, 188)) or (num_cols >= 50 and is_numeric_header)
+    is_heartbeat_matrix = (num_cols in (187, 188, 140, 141)) or (num_cols >= 50 and is_numeric_header)
 
     if is_numeric_header:
         if is_heartbeat_matrix:
-            clean_cols = [f"Sample_{i}" for i in range(min(187, num_cols))]
-            if num_cols == 188:
+            last_col = df.iloc[:, -1]
+            unique_last = np.unique(last_col.dropna())
+            has_lbl = (num_cols in (188, 141)) or (
+                len(unique_last) <= 8 and np.all(np.isin(unique_last, [0.0, 1.0, 2.0, 3.0, 4.0, 0, 1, 2, 3, 4]))
+            )
+            n_samples = (num_cols - 1) if has_lbl else num_cols
+            clean_cols = [f"Sample_{i}" for i in range(n_samples)]
+            if has_lbl:
                 clean_cols.append("Class_Label")
             df.columns = clean_cols
         else:
@@ -491,9 +497,17 @@ def _reconstruct_rhythm_from_beats(
     (e.g., mitbih_test.csv). Accurately extracts ground-truth class labels from column 188.
     """
     num_cols = df.shape[1]
-    samples_per_beat = 187
-    spacing = 25  # Physiological resting baseline between heartbeats
-    beat_stride = samples_per_beat + spacing
+    last_col = df.iloc[:, -1]
+    unique_last = np.unique(last_col.dropna())
+    has_labels = (num_cols in (188, 141)) or (
+        len(unique_last) <= 8 and np.all(np.isin(unique_last, [0.0, 1.0, 2.0, 3.0, 4.0, 0, 1, 2, 3, 4]))
+    )
+    samples_per_beat = (num_cols - 1) if has_labels else num_cols
+
+    # Natural resting cardiac stride ~72-75 BPM (~0.80 seconds per beat)
+    target_stride = max(samples_per_beat + 20, int(0.80 * fs))
+    spacing = target_stride - samples_per_beat
+    beat_stride = target_stride
 
     target_samples = (
         int(duration_allowance_sec * fs)
@@ -501,7 +515,7 @@ def _reconstruct_rhythm_from_beats(
         else (len(df) * beat_stride)
     )
     # 1. Clean incomplete/truncated rows and extract beat voltage matrix
-    df_clean = df.dropna(subset=df.columns[:min(187, df.shape[1])])
+    df_clean = df.dropna(subset=df.columns[:samples_per_beat])
     if len(df_clean) == 0:
         df_clean = df.fillna(0.0)
 
@@ -509,11 +523,10 @@ def _reconstruct_rhythm_from_beats(
     start_beat = min(max(0, len(df_clean) - 1), int(start_second * fs / beat_stride))
     end_beat = min(len(df_clean), start_beat + beats_needed)
 
-    beats_data = df_clean.iloc[start_beat:end_beat, :187].to_numpy(dtype=np.float64)
+    beats_data = df_clean.iloc[start_beat:end_beat, :samples_per_beat].to_numpy(dtype=np.float64)
     beats_data = np.nan_to_num(beats_data, nan=0.0)
     n_beats = len(beats_data)
-    has_labels = (num_cols == 188)
-    raw_labels = df_clean.iloc[start_beat:end_beat, 187].to_numpy(dtype=np.float64) if has_labels else None
+    raw_labels = df_clean.iloc[start_beat:end_beat, samples_per_beat].to_numpy(dtype=np.float64) if has_labels else None
 
     # 2. High-performance vectorized waveform assembly
     # Append flat resting baseline (equal to last beat sample) to each beat, then flatten
@@ -530,10 +543,20 @@ def _reconstruct_rhythm_from_beats(
     ann_descriptions = []
 
     if has_labels and raw_labels is not None:
+        # Check dataset labeling convention:
+        # Kaggle ECG5000 / UCR: 1.0=Normal, 0.0=Abnormal
+        # MIT-BIH AAMI standard: 0.0=Normal, >0=Abnormal
+        is_ecg5000 = (num_cols == 141) and set(np.unique(raw_labels)).issubset({0.0, 1.0, 0, 1})
         for lbl in raw_labels:
-            ann_symbols.append(AAMI_LABEL_TO_SYMBOL.get(lbl, "V" if lbl > 0 else "N"))
-            ann_labels.append(1 if lbl > 0 else 0)
-            ann_descriptions.append(AAMI_LABEL_TO_DESC.get(lbl, "Ectopic beat"))
+            if is_ecg5000:
+                is_ano = 1 if lbl == 0.0 else 0
+                ann_symbols.append("N" if is_ano == 0 else "V")
+                ann_labels.append(is_ano)
+                ann_descriptions.append("Normal sinus beat" if is_ano == 0 else "Arrhythmia / Ectopic beat")
+            else:
+                ann_symbols.append(AAMI_LABEL_TO_SYMBOL.get(lbl, "V" if lbl > 0 else "N"))
+                ann_labels.append(1 if lbl > 0 else 0)
+                ann_descriptions.append(AAMI_LABEL_TO_DESC.get(lbl, "Ectopic beat"))
 
     # 4. Optional Decimation
     effective_fs = fs
