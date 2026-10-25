@@ -208,3 +208,40 @@ def train_and_evaluate_model(
         "anomaly_scores": scores,
         "feature_importances": importances,
     }
+
+
+def predict_heartbeats(
+    bundle: Dict[str, Any],
+    features: np.ndarray,
+    threshold: float = 0.50,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Standardized inference function for saved model bundles.
+
+    Args:
+        bundle: Dictionary containing 'scaler' and ('classifier' or 'model')
+        features: 2D array of shape (n_beats, n_features)
+        threshold: Anomaly score decision threshold in [0, 1]
+
+    Returns:
+        binary_predictions: 1 for anomaly, 0 for normal
+        anomaly_scores: Continuous anomaly score in [0, 1]
+    """
+    if len(features) == 0:
+        return np.array([], dtype=int), np.array([], dtype=np.float64)
+
+    scaler = bundle["scaler"]
+    X_scaled = scaler.transform(features)
+
+    if "classifier" in bundle and bundle["classifier"] is not None:
+        probs = bundle["classifier"].predict_proba(X_scaled)
+        anomaly_scores = probs[:, 1] if probs.shape[1] > 1 else np.zeros(len(X_scaled))
+    else:
+        model = bundle["model"]
+        raw_scores = model.decision_function(X_scaled)
+        center = -0.06
+        anomaly_scores = 1.0 / (1.0 + np.exp(np.clip(25.0 * (raw_scores - center), -25.0, 25.0)))
+
+    predictions = (anomaly_scores >= threshold).astype(int)
+    return predictions, anomaly_scores
+

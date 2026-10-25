@@ -237,12 +237,9 @@ def run_evaluation(
         fs=rec_data["fs"],
     )
 
-    # Scale features and predict
-    X_scaled = scaler.transform(features)
-    raw_scores = model.decision_function(X_scaled)
-    center = -0.06
-    anomaly_scores = 1.0 / (1.0 + np.exp(np.clip(25.0 * (raw_scores - center), -25.0, 25.0)))
-    y_pred = (anomaly_scores >= threshold).astype(int)
+    # Use unified prediction helper
+    from src.models import predict_heartbeats
+    y_pred, anomaly_scores = predict_heartbeats(bundle, features, threshold=threshold)
 
     base_metrics = compute_metrics(y_true, y_pred, anomaly_scores)
     base_metrics["record_name"] = rec_data["record_name"]
@@ -256,3 +253,8 @@ def run_evaluation(
     print(f"ROC-AUC:     {base_metrics['roc_auc']:.3f}")
 
     return base_metrics
+
+
+if __name__ == "__main__":
+    run_evaluation()
+

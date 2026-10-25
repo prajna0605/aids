@@ -1,128 +1,74 @@
 {% extends "base.html" %}
 
-{% block title %}ECG Insight — Patient ECG Upload & Analysis{% endblock %}
+{% block title %}ECG Insight — Patient ECG Analysis{% endblock %}
 
 {% block content %}
-<!-- Minimal Hero Section -->
+<!-- Minimalist Header -->
 <section class="hero" id="hero_section">
   <div class="hero-pill">
-    <i class="fa-solid fa-heart-pulse"></i> Machine Learning ECG Telemetry
+    <i class="fa-solid fa-heart-pulse"></i> Automated Cardiac Telemetry
   </div>
-  <h1 class="hero-title">Upload & Analyze ECG</h1>
+  <h1 class="hero-title">Patient ECG Analysis</h1>
   <p class="hero-subtitle">
-    Upload an ECG recording (CSV or TXT) to filter noise, detect individual heartbeats, and identify arrhythmias with machine learning.
+    Upload an ambulatory Holter or hospital ECG recording (CSV or TXT) to condition the signal, isolate cardiac cycles, and detect arrhythmias with machine learning.
   </p>
 </section>
 
 <!-- Direct Upload Section -->
-<section class="glass-panel" id="analysis_panel">
+<section class="glass-panel" id="analysis_panel" style="max-width: 680px; margin: 0 auto;">
   <form id="analysis_form" action="{{ url_for('analyze') }}" method="POST" enctype="multipart/form-data">
     <input type="hidden" name="dataset_mode" id="dataset_mode" value="upload">
 
     <!-- Clean Drag & Drop Upload Zone -->
     <div class="drop-zone" id="dropzone" style="cursor: pointer;">
       <input type="file" id="custom_file_input" name="custom_file" accept=".csv,.txt,.tsv" style="display: none;">
-      <div class="drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-      <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">
-        Click to select or drag and drop an ECG file
+      <div class="drop-icon"><i class="fa-solid fa-file-waveform"></i></div>
+      <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">
+        Select or drop an ECG file here
       </h3>
       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
-        Supports continuous multi-lead patient recordings or AAMI benchmark datasets (e.g. <code>data/mitbih_test.csv</code>)
+        Accepts continuous patient recordings or benchmark datasets (e.g. <code>data/record_119_arrhythmia.csv</code>)
       </p>
       <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); document.getElementById('custom_file_input').click();">
-        <i class="fa-solid fa-folder-open"></i> Browse ECG File
+        <i class="fa-solid fa-folder-open"></i> Browse Files
       </button>
     </div>
 
-    <!-- Selected File Indicator -->
+    <!-- Selected File Confirmation Indicator -->
     <div id="file_info_badge" style="display: none; background: var(--accent-primary-light); border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 12px 16px; margin-top: 14px;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <div>
           <i class="fa-solid fa-file-waveform" style="color: var(--accent-primary); margin-right: 8px;"></i>
-          <strong id="selected_file_name" style="color: var(--text-main); font-size: 0.95rem;">filename.csv</strong>
+          <strong id="selected_file_name" style="color: var(--text-main); font-size: 0.95rem;">file.csv</strong>
           <span id="selected_file_size" style="color: var(--text-muted); font-size: 0.82rem; margin-left: 8px;">0.00 MB</span>
         </div>
-        <span style="font-size: 0.78rem; font-weight: 600; color: var(--accent-emerald);">
-          <i class="fa-solid fa-circle-check"></i> File Ready
+        <span style="font-size: 0.8rem; font-weight: 600; color: var(--accent-emerald);">
+          <i class="fa-solid fa-circle-check"></i> Ready to Analyze
         </span>
       </div>
     </div>
 
-    <!-- Upload Configuration Controls -->
+    <!-- Essential Configuration Controls -->
     <div class="form-row" style="margin-top: 1.5rem;">
       <div class="form-group">
         <label class="form-label" for="custom_fs">Sampling Frequency (Hz):</label>
         <input type="number" class="form-input" id="custom_fs" name="custom_fs" value="360" min="50" max="10000" step="10">
-        <div class="form-caption">e.g. 360 Hz (PhysioNet standard), 250 Hz, or 500 Hz.</div>
+        <div class="form-caption">PhysioNet standard is 360 Hz.</div>
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="window_duration">Analysis Time Window: <span id="window_duration_val" class="slider-value">60s</span></label>
-        <div class="slider-container">
-          <input type="range" class="slider" id="window_duration" name="window_duration" min="10" max="300" value="60" step="10" data-unit="s">
-        </div>
-        <div class="form-caption">Duration of signal to process from start offset.</div>
-        <input type="hidden" name="allowance_mode" value="window">
-        <input type="hidden" name="window_offset" id="window_offset" value="0.0">
+        <label class="form-label" for="window_duration">Analysis Window (seconds):</label>
+        <input type="number" class="form-input" id="window_duration" name="window_duration" value="60" min="5" max="300" step="5">
+        <div class="form-caption">Duration of signal to process from start.</div>
       </div>
     </div>
 
-    <!-- Optional Tuning Accordion -->
-    <details style="margin: 1.25rem 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem 1.25rem; background: var(--bg-surface);">
-      <summary style="font-weight: 600; font-size: 0.88rem; color: var(--text-muted); cursor: pointer;">
-        <i class="fa-solid fa-sliders" style="margin-right: 6px;"></i> Optional: Filter Range & Alert Sensitivity
-      </summary>
-
-      <div style="margin-top: 1rem;">
-        <div class="form-row" style="margin-bottom: 0.75rem;">
-          <div class="form-group">
-            <label class="form-label" for="decision_threshold">Anomaly Alert Threshold: <span id="decision_threshold_val" class="slider-value">50%</span></label>
-            <div class="slider-container">
-              <input type="range" class="slider" id="decision_threshold" name="decision_threshold" min="10" max="95" value="50" step="5" data-unit="%">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="filter_bandpass">Butterworth Bandpass Filter:</label>
-            <select class="form-select" id="filter_bandpass" name="filter_bandpass">
-              <option value="0.5-40" selected>0.5 Hz – 40 Hz (Standard Clinical Band)</option>
-              <option value="0.1-50">0.1 Hz – 50 Hz (Extended Wideband)</option>
-              <option value="1.0-30">1.0 Hz – 30 Hz (Heavy Filter)</option>
-            </select>
-          </div>
-        </div>
-
-        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
-          <input type="checkbox" name="apply_notch" value="true" checked>
-          Apply 50 Hz AC powerline notch filter
-        </label>
-      </div>
-    </details>
-
-    <!-- Run Analysis Button -->
+    <!-- Analyze Button -->
     <div style="text-align: center; margin-top: 1.75rem;">
-      <button type="submit" class="btn btn-primary btn-lg" id="btn_run_analysis">
-        <i class="fa-solid fa-play"></i> Analyze ECG File
+      <button type="submit" class="btn btn-primary btn-lg" id="btn_run_analysis" style="width: 100%; padding: 12px 24px; font-size: 1rem;">
+        <i class="fa-solid fa-heart-pulse"></i> Analyze ECG Recording
       </button>
     </div>
   </form>
-</section>
-
-<!-- Quick Verification Guide Card -->
-<section style="margin-top: 2rem;">
-  <div class="glass-panel" style="background: #ffffff; border-left: 4px solid var(--accent-primary);">
-    <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.4rem; display: flex; align-items: center; gap: 8px;">
-      <i class="fa-solid fa-vial-circle-check" style="color: var(--accent-primary);"></i>
-      How to Verify the Model
-    </h3>
-    <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 0.5rem;">
-      To verify the system on real clinical data without any simulation:
-    </p>
-    <ol style="padding-left: 20px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
-      <li>Click <strong>Browse ECG File</strong> and select <code>data/mitbih_test.csv</code> from this repository (contains 4,500 real clinical beats with AAMI labels).</li>
-      <li>Click <strong>Analyze ECG File</strong>. The system will reconstruct the real continuous rhythm strip, locate R-peaks, and flag anomalous beats.</li>
-      <li>Check the <strong>Benchmarks</strong> page to view the quantitative validation matrix (96.9% accuracy, 93.8% recall, 97.8% specificity).</li>
-    </ol>
-  </div>
 </section>
 {% endblock %}
