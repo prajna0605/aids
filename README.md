@@ -222,23 +222,20 @@ Open your browser and navigate to **`http://127.0.0.1:5000`**.
 aids/
 ├── app.py                          # Main Flask web application backend
 ├── requirements.txt                # Production Python dependencies
-├── README.md                       # Comprehensive project documentation
-├── guide.md                        # Step-by-step tutorial and development guide
-├── learn.md                        # Conceptual learning guide & architectural rationale
-├── prd.md                          # Product Requirements Document
+├── README.md                       # Complete project documentation & guide
 │
 ├── src/                            # Core Python modules
+│   ├── pipeline.py                 # End-to-end diagnostic analysis orchestrator
 │   ├── data_loader.py              # Ingestion engine: MIT-BIH, CSV/TXT upload, synthetic ECG
 │   ├── preprocessing.py            # Zero-phase Butterworth/Notch filters & Pan-Tompkins detector
 │   ├── features.py                 # Cardiac cycle segmentation & 30 biometric features
-│   ├── models.py                   # Anomaly detection models (Isolation Forest, One-Class SVM)
+│   ├── models.py                   # Anomaly detection models & unified prediction engine
 │   ├── train.py                    # Model training pipeline and joblib serialization
-│   ├── evaluation.py               # Benchmark metrics & portfolio report generator
-│   ├── evaluate.py                 # CLI entrypoint for evaluation
+│   ├── evaluation.py               # Benchmark metrics, CLI runner & portfolio report generator
 │   └── visualizer.py               # Plotly interactive chart generators
 │
 ├── models/
-│   └── model.joblib                # Serialized production model bundle (Scaler + Isolation Forest)
+│   └── model.joblib                # Serialized production model bundle (Scaler + Ensemble)
 │
 ├── templates/                      # Clean Minimalist White HTML5 Templates
 │   ├── base.html                   # Master layout with clean header and footer

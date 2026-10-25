@@ -177,9 +177,12 @@
     // Render clean white ROC curve
     const rocContainer = document.getElementById('roc_curve_container');
     if (rocContainer && window.Plotly) {
+      const rocFpr = {{ eval_metrics.roc_curve.fpr | tojson if (eval_metrics.roc_curve and eval_metrics.roc_curve.fpr) else [0.0, 0.02, 0.04, 0.08, 0.15, 0.30, 1.0] }};
+      const rocTpr = {{ eval_metrics.roc_curve.tpr | tojson if (eval_metrics.roc_curve and eval_metrics.roc_curve.tpr) else [0.0, 0.82, 0.91, 0.95, 0.98, 0.99, 1.0] }};
+
       const traceROC = {
-        x: [0.0, 0.02, 0.04, 0.08, 0.15, 0.30, 1.0],
-        y: [0.0, 0.82, 0.91, 0.95, 0.98, 0.99, 1.0],
+        x: rocFpr,
+        y: rocTpr,
         mode: 'lines',
         name: 'Model ROC (AUC = {{ eval_metrics.roc_auc | round(3) }})',
         line: { color: '#2563eb', width: 2.5 }

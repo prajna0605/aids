@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import load_mitdb_record, generate_synthetic_ecg
+from src.data_loader import load_mitdb_record, generate_synthetic_ecg, load_custom_ecg_csv
 from src.preprocessing import preprocess_ecg_signal, pan_tompkins_r_peak_detection
 from src.features import segment_heartbeats, extract_ecg_features
 
@@ -37,6 +37,7 @@ def train_model(
     print("Gathering comprehensive multi-dataset ECG training corpus...")
     all_features = []
     all_labels = []
+    feature_names = []
 
     # 1. ECG5000 Kaggle / UCR benchmark dataset
     ecg5000_path = Path("data/ecg5000.csv")
@@ -83,20 +84,45 @@ def train_model(
         except Exception as e:
             print(f"Notice loading MIT-BIH CSV: {e}")
 
-    # 3. PhysioNet benchmark records: 100 (Normal), 106 (PVC), 119 (Bigeminy), 200 (V-Tach)
+    # 3. Local Record 119 Arrhythmia Benchmark CSV
+    rec119_path = Path("data/record_119_arrhythmia.csv")
+    if rec119_path.exists():
+        try:
+            with open(rec119_path, "rb") as f:
+                rec119_bytes = f.read()
+            rec119 = load_custom_ecg_csv(rec119_bytes, fs=360, filename="record_119_arrhythmia.csv", duration_allowance_sec=60.0)
+            p119 = preprocess_ecg_signal(rec119["signal"], fs=360)
+            peaks119 = pan_tompkins_r_peak_detection(p119["cleaned"], fs=360)
+            vp119, wf119 = segment_heartbeats(p119["cleaned"], peaks119, fs=360)
+            f119, feat_names119 = extract_ecg_features(wf119, vp119, fs=360)
+            if not feature_names:
+                feature_names = feat_names119
+            if len(f119) > 0:
+                all_features.append(f119)
+                # Alternating bigeminy pseudo-labels for PVC contrast
+                l119 = np.array([1 if i % 2 == 1 else 0 for i in range(len(vp119))], dtype=int)
+                all_labels.append(l119)
+                print(f"Loaded {len(f119)} beats from Record 119 arrhythmia CSV.")
+        except Exception as e:
+            print(f"Notice loading Record 119 CSV: {e}")
+
+    # 4. PhysioNet benchmark records (only if locally cached .dat exists)
     for rec_id in ["100", "106", "119", "200"]:
+        if not Path(f"data/mitdb/{rec_id}.dat").exists() and not list(Path("data/cache_npz").glob(f"{rec_id}_*.npz")):
+            continue
         try:
             rec = load_mitdb_record(rec_id, max_seconds=120)
             prep = preprocess_ecg_signal(rec["signal"], fs=rec["fs"])
             peaks = np.array(rec["ann_samples"], dtype=int) if len(rec.get("ann_samples", [])) > 0 else pan_tompkins_r_peak_detection(prep["cleaned"], fs=rec["fs"])
             valid_p, wf = segment_heartbeats(prep["cleaned"], peaks, fs=rec["fs"])
             f, feat_names = extract_ecg_features(wf, valid_p, fs=rec["fs"])
-            feature_names = feat_names
+            if not feature_names:
+                feature_names = feat_names
             lbls = np.array(rec["ann_labels"][:len(valid_p)], dtype=int) if len(rec.get("ann_labels", [])) >= len(valid_p) else np.zeros(len(valid_p), dtype=int)
             if len(f) > 0:
                 all_features.append(f)
                 all_labels.append(lbls)
-                print(f"Loaded {len(f)} beats from MIT-BIH Record {rec_id}.")
+                print(f"Loaded {len(f)} beats from cached MIT-BIH Record {rec_id}.")
         except Exception as e:
             print(f"Notice loading Record {rec_id}: {e}")
 

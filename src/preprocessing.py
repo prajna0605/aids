@@ -117,15 +117,20 @@ def pan_tompkins_r_peak_detection(
     threshold = np.mean(integrated) + 0.5 * np.std(integrated)
     init_peaks, _ = sp_signal.find_peaks(integrated, height=threshold, distance=min_distance)
 
-    # 6. Refine true peak position by finding local maximum in cleaned signal
+    # 6. Refine true peak position (supports both normal upright and inverted QRS complexes)
     search_window = int(0.08 * fs)
     refined_peaks = []
     for p in init_peaks:
         left = max(0, p - search_window)
         right = min(len(cleaned_signal), p + search_window)
         if right > left:
-            local_r = left + int(np.argmax(cleaned_signal[left:right]))
+            slice_vals = cleaned_signal[left:right]
+            max_pos = np.max(slice_vals)
+            min_neg = np.min(slice_vals)
+            local_idx = np.argmax(slice_vals) if abs(max_pos) >= abs(min_neg) else np.argmin(slice_vals)
+            local_r = left + int(local_idx)
             if not refined_peaks or (local_r - refined_peaks[-1] > min_distance // 2):
                 refined_peaks.append(local_r)
 
     return np.array(refined_peaks, dtype=int)
+
