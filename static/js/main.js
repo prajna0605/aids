@@ -130,24 +130,28 @@ function initTableFilters() {
 }
 
 /**
- * Render Interactive Plotly Telemetry Strip
+ * Render Interactive Plotly Telemetry Strip (Clean, Medical-Grade, De-cluttered)
  */
 function renderECGPlot(containerId, telemetry) {
   const container = document.getElementById(containerId);
   if (!container || !window.Plotly) return;
 
   const { time, signal, r_peaks, predictions, anomaly_scores, lead_name } = telemetry;
+  if (!time || time.length === 0) return;
+
+  const maxTime = time[time.length - 1];
+  const defaultWindow = Math.min(8.0, maxTime);
 
   const traces = [];
 
-  // 1. Base ECG Trace
+  // 1. Sleek Continuous ECG Waveform Line
   traces.push({
     x: time,
     y: signal,
     type: 'scatter',
     mode: 'lines',
-    name: `ECG (${lead_name || 'Lead'})`,
-    line: { color: '#0284c7', width: 1.5 },
+    name: 'ECG Waveform',
+    line: { color: '#0284c7', width: 1.8 },
     hoverinfo: 'x+y'
   });
 
@@ -160,40 +164,24 @@ function renderECGPlot(containerId, telemetry) {
   const anoY = [];
   const anoText = [];
 
-  const shadedRects = [];
-
   r_peaks.forEach((peakIdx, i) => {
     const t = time[peakIdx];
     const y = signal[peakIdx];
     const isAno = predictions[i] === 1;
-    const score = anomaly_scores[i] ? anomaly_scores[i].toFixed(3) : '0.000';
+    const score = anomaly_scores[i] !== undefined ? anomaly_scores[i].toFixed(3) : '0.000';
 
     if (isAno) {
       anoX.push(t);
       anoY.push(y);
-      anoText.push(`⚠ Flagged Anomaly<br>Beat #${i+1}<br>Score: ${score}`);
-
-      // Add soft red highlight window
-      shadedRects.push({
-        type: 'rect',
-        xref: 'x',
-        yref: 'paper',
-        x0: Math.max(0, t - 0.20),
-        x1: Math.min(time[time.length - 1], t + 0.20),
-        y0: 0,
-        y1: 1,
-        fillcolor: 'rgba(239, 68, 68, 0.12)',
-        line: { width: 0 },
-        layer: 'below'
-      });
+      anoText.push(`<b>Flagged Arrhythmia Beat #${i + 1}</b><br>Time: ${t.toFixed(2)}s<br>Anomaly Score: ${score}`);
     } else {
       normX.push(t);
       normY.push(y);
-      normText.push(`Normal Beat #${i+1}<br>Score: ${score}`);
+      normText.push(`<b>Normal Sinus Beat #${i + 1}</b><br>Time: ${t.toFixed(2)}s<br>Anomaly Score: ${score}`);
     }
   });
 
-  // 2. Normal Beat Markers
+  // 2. Normal Beat Markers (Subtle, clean emerald dots)
   if (normX.length > 0) {
     traces.push({
       x: normX,
@@ -201,76 +189,138 @@ function renderECGPlot(containerId, telemetry) {
       type: 'scatter',
       mode: 'markers',
       name: 'Normal Beat',
+      showlegend: false,
       marker: {
         symbol: 'circle',
-        size: 7,
+        size: 6,
         color: '#10b981',
         line: { color: '#ffffff', width: 1 }
       },
       text: normText,
-      hoverinfo: 'text+x+y'
+      hoverinfo: 'text'
     });
   }
 
-  // 3. Anomalous Beat Markers
+  // 3. Anomalous Beat Markers (Crisp alert red diamonds - NO overlapping ⚠ text!)
   if (anoX.length > 0) {
     traces.push({
       x: anoX,
       y: anoY,
       type: 'scatter',
-      mode: 'markers+text',
-      name: 'Flagged Anomaly',
+      mode: 'markers',
+      name: 'Flagged Arrhythmia',
+      showlegend: false,
       marker: {
         symbol: 'diamond',
-        size: 11,
-        color: '#dc2626',
+        size: 8,
+        color: '#ef4444',
         line: { color: '#ffffff', width: 1.5 }
       },
-      text: anoX.map(() => '⚠'),
-      textposition: 'top center',
-      textfont: { color: '#dc2626', size: 13 },
-      hovertext: anoText,
-      hoverinfo: 'text+x+y'
+      text: anoText,
+      hoverinfo: 'text'
     });
   }
 
   const layout = {
     paper_bgcolor: '#ffffff',
     plot_bgcolor: '#ffffff',
-    font: { color: '#0f172a', family: 'Inter, sans-serif' },
-    margin: { l: 50, r: 25, t: 30, b: 40 },
-    height: 420,
+    font: { color: '#0f172a', family: 'Inter, -apple-system, sans-serif' },
+    margin: { l: 50, r: 25, t: 15, b: 35 },
+    height: 400,
+    showlegend: false, // Prevents duplicate legend colliding with the card header
     xaxis: {
-      title: 'Time (seconds)',
-      gridcolor: '#f1f5f9',
+      title: { text: 'Time (seconds)', font: { size: 12, color: '#64748b' } },
+      gridcolor: '#f8fafc',
       zerolinecolor: '#e2e8f0',
-      rangeslider: { visible: true, thickness: 0.08, bgcolor: '#f8fafc' }
+      range: [0, defaultWindow], // Crisp 8-second window by default instead of squished 60s
+      rangeslider: {
+        visible: true,
+        thickness: 0.07,
+        bgcolor: '#f8fafc',
+        bordercolor: '#e2e8f0',
+        borderwidth: 1
+      }
     },
     yaxis: {
-      title: 'Amplitude (Normalized mV)',
-      gridcolor: '#f1f5f9',
+      title: { text: 'Amplitude (Normalized mV)', font: { size: 12, color: '#64748b' } },
+      gridcolor: '#f8fafc',
       zerolinecolor: '#e2e8f0'
     },
-    legend: {
-      orientation: 'h',
-      y: 1.05,
-      x: 1,
-      xanchor: 'right',
-      bgcolor: 'rgba(255, 255, 255, 0.95)',
-      bordercolor: '#e2e8f0',
-      borderwidth: 1
-    },
-    shapes: shadedRects
+    hovermode: 'closest'
   };
 
   const config = {
     responsive: true,
     displayModeBar: true,
     displaylogo: false,
-    modeBarButtonsToRemove: ['lasso2d', 'select2d']
+    modeBarButtonsToRemove: ['lasso2d', 'select2d', 'toggleSpikelines']
   };
 
-  Plotly.newPlot(container, traces, layout, config);
+  Plotly.newPlot(container, traces, layout, config).then(() => {
+    updateRangeIndicator(container, maxTime);
+  });
+
+  // Listen to range changes from user dragging range slider or panning
+  container.on('plotly_relayout', function() {
+    updateRangeIndicator(container, maxTime);
+  });
+
+  // Global window adjustment handlers
+  window.setECGWindow = function(windowSec, btnElement) {
+    if (btnElement) {
+      document.querySelectorAll('.telemetry-toolbar .btn-chip[data-window]').forEach(b => b.classList.remove('active'));
+      btnElement.classList.add('active');
+    }
+
+    const currentRange = container.layout && container.layout.xaxis ? container.layout.xaxis.range : [0, defaultWindow];
+    let start = currentRange ? currentRange[0] : 0;
+    let end;
+
+    if (windowSec === 'all') {
+      start = 0;
+      end = maxTime;
+    } else {
+      const sec = parseFloat(windowSec);
+      end = Math.min(maxTime, start + sec);
+      if (end - start < sec) {
+        start = Math.max(0, end - sec);
+      }
+    }
+
+    Plotly.relayout(container, { 'xaxis.range': [start, end] });
+  };
+
+  window.shiftECGWindow = function(direction) {
+    const currentRange = container.layout && container.layout.xaxis ? container.layout.xaxis.range : [0, defaultWindow];
+    if (!currentRange) return;
+
+    const span = currentRange[1] - currentRange[0];
+    const shift = span * 0.75 * direction;
+    let newStart = Math.max(0, currentRange[0] + shift);
+    let newEnd = newStart + span;
+
+    if (newEnd > maxTime) {
+      newEnd = maxTime;
+      newStart = Math.max(0, newEnd - span);
+    }
+
+    Plotly.relayout(container, { 'xaxis.range': [newStart, newEnd] });
+  };
+}
+
+/**
+ * Updates the range badge indicator text
+ */
+function updateRangeIndicator(container, maxTime) {
+  const badge = document.getElementById('window_range_badge');
+  if (!badge || !container.layout || !container.layout.xaxis) return;
+
+  const range = container.layout.xaxis.range;
+  if (!range) return;
+
+  const start = Math.max(0, range[0]).toFixed(1);
+  const end = Math.min(maxTime, range[1]).toFixed(1);
+  badge.textContent = `${start}s – ${end}s of ${maxTime.toFixed(1)}s`;
 }
 
 /**

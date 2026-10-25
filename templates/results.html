@@ -70,18 +70,40 @@
         ECG Waveform Rhythm Strip
       </h3>
       <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0;">
-        Drag or zoom along the timeline. Green dots indicate normal sinus beats; red diamonds highlight flagged ectopic beats.
+        Interactive clinical rhythm strip. Normal beats in green; detected ectopic beats in red.
       </p>
     </div>
 
     <div class="chart-legend-strip">
-      <div class="legend-item"><span class="legend-dot cyan"></span> ECG Signal</div>
+      <div class="legend-item"><span class="legend-dot cyan"></span> ECG Waveform</div>
       <div class="legend-item"><span class="legend-dot green"></span> Normal Beat</div>
-      <div class="legend-item"><span class="legend-dot red"></span> Flagged Anomaly</div>
+      <div class="legend-item"><span class="legend-dot red"></span> Flagged Arrhythmia</div>
     </div>
   </div>
 
-  <div id="ecg_plot_container" style="width: 100%; min-height: 420px;"></div>
+  <!-- Sleek Telemetry Window Controls -->
+  <div class="telemetry-toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-label"><i class="fa-solid fa-magnifying-glass"></i> View Window:</span>
+      <button type="button" class="btn-chip" data-window="5" onclick="setECGWindow(5, this)">5s</button>
+      <button type="button" class="btn-chip active" data-window="8" onclick="setECGWindow(8, this)">8s (P-QRS-T)</button>
+      <button type="button" class="btn-chip" data-window="15" onclick="setECGWindow(15, this)">15s</button>
+      <button type="button" class="btn-chip" data-window="all" onclick="setECGWindow('all', this)">All</button>
+    </div>
+
+    <div class="toolbar-group">
+      <span class="toolbar-label"><i class="fa-solid fa-arrows-left-right"></i> Navigate:</span>
+      <button type="button" class="btn-chip" onclick="shiftECGWindow(-1)" title="Scroll left">
+        <i class="fa-solid fa-chevron-left"></i> Prev
+      </button>
+      <button type="button" class="btn-chip" onclick="shiftECGWindow(1)" title="Scroll right">
+        Next <i class="fa-solid fa-chevron-right"></i>
+      </button>
+      <span id="window_range_badge" class="window-range-pill">0.0s – 8.0s</span>
+    </div>
+  </div>
+
+  <div id="ecg_plot_container" style="width: 100%; min-height: 400px;"></div>
 </div>
 
 <!-- RR Tachogram & Continuous Anomaly Scores -->

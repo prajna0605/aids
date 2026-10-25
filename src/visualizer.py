@@ -75,95 +75,74 @@ def plot_ecg_interactive(
                     y=signal[r_peaks[norm_mask]],
                     mode="markers",
                     name="Normal Beat",
+                    showlegend=False,
                     marker=dict(
                         symbol="circle",
-                        size=9,
+                        size=6,
                         color=PALETTE["normal_beat"],
                         line=dict(color="#ffffff", width=1),
                     ),
                     text=[
-                        f"Beat #{idx}<br>Status: Normal<br>Score: {score:.3f}"
+                        f"Beat #{idx + 1}<br>Status: Normal<br>Score: {score:.3f}"
                         for idx, score in zip(np.where(norm_mask)[0], anomaly_scores[norm_mask])
                     ],
-                    hoverinfo="text+x+y",
+                    hoverinfo="text",
                 )
             )
 
-        # Anomalous Beats (Red alert markers with larger size)
+        # Anomalous Beats (Clean alert markers without overlapping text)
         if np.any(ano_mask):
             fig.add_trace(
                 go.Scatter(
                     x=time[r_peaks[ano_mask]],
                     y=signal[r_peaks[ano_mask]],
-                    mode="markers+text",
+                    mode="markers",
                     name="Flagged Anomaly",
+                    showlegend=False,
                     marker=dict(
                         symbol="diamond",
-                        size=13,
+                        size=8,
                         color=PALETTE["anomaly_beat"],
                         line=dict(color="#ffffff", width=1.5),
                     ),
-                    text=["⚠" for _ in range(np.sum(ano_mask))],
-                    textposition="top center",
-                    textfont=dict(color=PALETTE["anomaly_beat"], size=14),
                     hovertext=[
-                        f"<b>POTENTIAL ANOMALY</b><br>Beat #{idx}<br>Score: {score:.3f}<br>Ref: {sym if sym is not None else 'N/A'}"
+                        f"<b>FLAGGED ARRHYTHMIA</b><br>Beat #{idx + 1}<br>Score: {score:.3f}<br>Ref: {sym if sym is not None else 'Ectopic'}"
                         for idx, score, sym in zip(
                             np.where(ano_mask)[0],
                             anomaly_scores[ano_mask],
                             ann_symbols[ano_mask] if ann_symbols is not None else [None] * np.sum(ano_mask),
                         )
                     ],
-                    hoverinfo="text+x+y",
+                    hoverinfo="text",
                 )
             )
 
-            # Add highlighted vertical shaded regions around flagged beats
-            # Shaded window around ectopic beat (-150ms to +250ms)
-            half_win = 0.20
-            for pk in r_peaks[ano_mask]:
-                t_center = time[pk]
-                fig.add_vrect(
-                    x0=max(0, t_center - half_win),
-                    x1=min(time[-1], t_center + half_win),
-                    fillcolor=PALETTE["anomaly_beat"],
-                    opacity=0.15,
-                    layer="below",
-                    line_width=0,
-                )
+    init_window = min(8.0, float(time[-1])) if len(time) > 0 else 8.0
 
     fig.update_layout(
         title=dict(
             text=f"<b>{title}</b>",
-            font=dict(color=PALETTE["text"], size=16),
+            font=dict(color=PALETTE["text"], size=15),
         ),
         paper_bgcolor=PALETTE["bg"],
         plot_bgcolor=PALETTE["card_bg"],
         font=dict(color=PALETTE["text"], family="Inter, Roboto, sans-serif"),
+        showlegend=False,
         xaxis=dict(
             title="Time (seconds)",
             gridcolor=PALETTE["grid"],
             zerolinecolor=PALETTE["grid"],
-            rangeslider=dict(visible=True, thickness=0.08, bgcolor="#f8fafc"),
+            range=[0, init_window],
+            rangeslider=dict(visible=True, thickness=0.07, bgcolor="#f8fafc"),
         ),
         yaxis=dict(
-            title="Amplitude (mV / Normalized)",
+            title="Amplitude (Normalized mV)",
             gridcolor=PALETTE["grid"],
             zerolinecolor=PALETTE["grid"],
         ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            bgcolor="rgba(255, 255, 255, 0.95)",
-            bordercolor=PALETTE["grid"],
-            borderwidth=1,
-        ),
         hovermode="closest",
-        margin=dict(l=50, r=30, t=60, b=40),
-        height=480,
+        margin=dict(l=50, r=25, t=50, b=40),
+        height=450,
     )
 
     return fig

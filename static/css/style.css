@@ -687,7 +687,78 @@ a:hover {
 }
 .legend-dot.cyan { background: var(--accent-cyan); }
 .legend-dot.green { background: var(--accent-emerald); }
-.legend-dot.red { background: var(--accent-crimson); }
+.legend-dot.red {
+  background: var(--accent-crimson);
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+
+/* Quick Window Toolbar & Controls */
+.telemetry-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.toolbar-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.btn-chip {
+  background: #ffffff;
+  border: 1px solid var(--border-medium);
+  color: var(--text-main);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-chip:hover {
+  background: var(--bg-surface);
+  border-color: #94a3b8;
+}
+.btn-chip.active {
+  background: var(--accent-primary-light);
+  border-color: #93c5fd;
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.window-range-pill {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+  border: 1px solid #bfdbfe;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  margin-left: 6px;
+}
 
 /* ==========================================================================
    Data Inspection Tables
