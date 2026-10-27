@@ -25,3 +25,4 @@ input/
 *.bak
 .pytest_cache/
 scratch/
+.env

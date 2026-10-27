@@ -74,19 +74,8 @@ function initFileUpload() {
 
     if (fileInfo) fileInfo.style.display = 'block';
   }
-
-  // Allowance Slicing Mode Toggle
-  const allowanceRadios = document.querySelectorAll('input[name="allowance_mode"]');
-  const windowControls = document.getElementById('window_allowance_controls');
-
-  allowanceRadios.forEach(radio => {
-    radio.addEventListener('change', () => {
-      if (windowControls) {
-        windowControls.style.display = radio.value === 'window' ? 'block' : 'none';
-      }
-    });
-  });
 }
+
 
 /**
  * Form Submission & Spinner Overlay
@@ -100,6 +89,13 @@ function initFormSubmission() {
       overlay.classList.add('active');
     });
   }
+
+  window.loadDemoPreset = function(mode) {
+    const modeInput = document.getElementById('dataset_mode');
+    if (modeInput) modeInput.value = mode;
+    if (overlay) overlay.classList.add('active');
+    if (form) form.submit();
+  };
 }
 
 /**

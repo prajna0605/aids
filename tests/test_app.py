@@ -115,3 +115,33 @@ def test_model_joblib_integrity():
     assert "scaler" in bundle
     assert "feature_names" in bundle
     assert len(bundle["feature_names"]) == 30
+
+
+def test_analyze_preset_mode(client):
+    """Verifies 1-click analysis on preset demo record 119."""
+    data = {"dataset_mode": "preset", "decision_threshold": "50"}
+    response = client.post("/analyze", data=data)
+    assert response.status_code == 200
+    assert b"Telemetry Analysis" in response.data
+    assert b"MIT-BIH_Record_119_Bigeminy" in response.data
+
+
+def test_analyze_synthetic_mode(client):
+    """Verifies analysis on mathematically generated synthetic ECG."""
+    data = {"dataset_mode": "synthetic", "window_duration": "30", "decision_threshold": "50"}
+    response = client.post("/analyze", data=data)
+    assert response.status_code == 200
+    assert b"Telemetry Analysis" in response.data
+    assert b"SYNTH" in response.data or b"Synthetic" in response.data
+
+
+def test_download_clinical_pdf(client):
+    """Verifies that the clinical PDF report is generated and served with application/pdf mimetype."""
+    response = client.get("/report/benchmark_119/pdf")
+    assert response.status_code == 200
+    assert response.headers["Content-Type"] == "application/pdf"
+    assert b"%PDF" in response.data[:10]
+    assert len(response.data) > 10_000
+
+
+
